@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "url": "https://mcp.supabase.com/mcp",
+      "transport": "sse",
+      "settings": {
+        "project_ref": "jxbuimrosrmmjroojdza",
+        "read_only": false,
+        "features": "database,functions,storage,docs"
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+# Ignore OAuth tokens and session data
+*.token
+*.session
+credentials.json
+
+# Ignore local overrides
+config.local.json
