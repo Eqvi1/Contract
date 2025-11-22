@@ -1,3 +1,6 @@
+-- Тип ENUM для статусов объектов
+CREATE TYPE object_status AS ENUM ('main_construction', 'warranty_service');
+
 -- Таблица объектов строительства
 CREATE TABLE IF NOT EXISTS objects (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -5,6 +8,9 @@ CREATE TABLE IF NOT EXISTS objects (
   address TEXT NOT NULL,
   description TEXT,
   map_link TEXT,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  status object_status DEFAULT 'main_construction',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -23,6 +29,8 @@ CREATE TABLE IF NOT EXISTS contacts (
 
 -- Индексы для быстрого поиска
 CREATE INDEX IF NOT EXISTS idx_objects_name ON objects(name);
+CREATE INDEX IF NOT EXISTS idx_objects_coordinates ON objects(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_objects_status ON objects(status);
 CREATE INDEX IF NOT EXISTS idx_contacts_full_name ON contacts(full_name);
 CREATE INDEX IF NOT EXISTS idx_contacts_position ON contacts(position);
 CREATE INDEX IF NOT EXISTS idx_contacts_object_id ON contacts(object_id);
@@ -93,6 +101,9 @@ COMMENT ON COLUMN objects.name IS 'Название объекта';
 COMMENT ON COLUMN objects.address IS 'Адрес объекта';
 COMMENT ON COLUMN objects.description IS 'Описание объекта';
 COMMENT ON COLUMN objects.map_link IS 'Ссылка на карту (Google Maps, Yandex Maps и т.д.)';
+COMMENT ON COLUMN objects.latitude IS 'Широта объекта (latitude) в десятичных градусах';
+COMMENT ON COLUMN objects.longitude IS 'Долгота объекта (longitude) в десятичных градусах';
+COMMENT ON COLUMN objects.status IS 'Статус объекта: основное строительство или гарантийное обслуживание';
 COMMENT ON COLUMN objects.created_at IS 'Дата и время создания записи';
 COMMENT ON COLUMN objects.updated_at IS 'Дата и время последнего обновления записи';
 

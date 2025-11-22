@@ -47,6 +47,13 @@
   background-color: white;
 }
 
+/* Dark theme для активной вкладки */
+[data-theme='dark'] .section-tab.active {
+  color: #60a5fa;
+  border-bottom-color: #60a5fa;
+  background-color: #1f2937;
+}
+
 .section-content {
   padding: 1.5rem 2rem;
 }
@@ -149,11 +156,21 @@
 
 .btn-secondary {
   background-color: #e5e7eb;
-  color: var(--text-secondary);
+  color: #374151;
 }
 
 .btn-secondary:hover {
   background-color: #d1d5db;
+}
+
+/* Dark theme для кнопки Отмена */
+[data-theme='dark'] .btn-secondary {
+  background-color: #4b5563;
+  color: #f9fafb;
+}
+
+[data-theme='dark'] .btn-secondary:hover {
+  background-color: #6b7280;
 }
 
 /* Modal */
@@ -249,6 +266,8 @@
   font-size: 0.875rem;
   font-family: inherit;
   transition: border-color 0.2s;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .form-group input:focus,
@@ -259,8 +278,107 @@
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
+/* Dark theme для полей ввода */
+[data-theme='dark'] .form-group input,
+[data-theme='dark'] .form-group textarea,
+[data-theme='dark'] .form-group select {
+  border-color: #4b5563;
+  background-color: #374151;
+  color: #f9fafb;
+}
+
+[data-theme='dark'] .form-group input:focus,
+[data-theme='dark'] .form-group textarea:focus,
+[data-theme='dark'] .form-group select:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+}
+
+/* Select options для темной темы */
+[data-theme='dark'] .form-group select option {
+  background-color: #374151;
+  color: #f9fafb;
+}
+
 .form-group textarea {
   resize: vertical;
+}
+
+/* Map Modal */
+.modal-map {
+  max-width: 1200px;
+  max-height: 90vh;
+}
+
+.map-container {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.yandex-map {
+  width: 100%;
+  height: 600px;
+  border: none;
+}
+
+.map-info {
+  padding: 1rem 2rem;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border-color);
+}
+
+.map-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.map-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+[data-theme='dark'] .map-loading-overlay {
+  background: rgba(31, 41, 55, 0.95);
+}
+
+.map-loading-spinner {
+  text-align: center;
+}
+
+.map-loading-spinner p {
+  margin: 1rem 0 0 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  margin: 0 auto;
+  border: 4px solid var(--border-color);
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .modal-footer {
@@ -291,6 +409,10 @@
     padding: 1rem;
   }
 
+  .section-actions {
+    flex-wrap: wrap;
+  }
+
   .data-table {
     font-size: 0.75rem;
   }
@@ -312,6 +434,23 @@
 
   .modal form {
     padding: 1.5rem;
+  }
+
+  .modal-map {
+    max-width: 100%;
+    max-height: 100vh;
+  }
+
+  .yandex-map {
+    height: 400px;
+  }
+
+  .map-info {
+    padding: 0.75rem 1rem;
+  }
+
+  .map-hint {
+    font-size: 0.75rem;
   }
 }
 
@@ -361,5 +500,117 @@
 
   .actions-column {
     width: 80px;
+  }
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 0.375rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.status-main_construction {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.status-warranty_service {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+/* Dark theme для бейджей */
+[data-theme='dark'] .status-main_construction {
+  background-color: #1e3a8a;
+  color: #bfdbfe;
+}
+
+[data-theme='dark'] .status-warranty_service {
+  background-color: #78350f;
+  color: #fde68a;
+}
+
+/* Map filters */
+.map-filters {
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+}
+
+.map-filters-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.map-filter-buttons {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.map-filter-btn {
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 2px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.map-filter-btn:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+  background-color: var(--bg-secondary);
+}
+
+.map-filter-btn.active {
+  border-color: #2563eb;
+  background-color: #2563eb;
+  color: white;
+  font-weight: 600;
+}
+
+/* Dark theme для фильтров карты */
+[data-theme='dark'] .map-filter-btn {
+  border-color: #4b5563;
+  background-color: #374151;
+  color: #d1d5db;
+}
+
+[data-theme='dark'] .map-filter-btn:hover {
+  border-color: #60a5fa;
+  color: #60a5fa;
+}
+
+[data-theme='dark'] .map-filter-btn.active {
+  border-color: #60a5fa;
+  background-color: #60a5fa;
+  color: white;
+}
+
+@media (max-width: 768px) {
+  .map-filters {
+    padding: 1rem;
+  }
+
+  .map-filter-buttons {
+    gap: 0.5rem;
+  }
+
+  .map-filter-btn {
+    padding: 0.5rem 0.875rem;
+    font-size: 0.75rem;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 }

@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS contracts (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   contract_number VARCHAR(100) NOT NULL UNIQUE,
   contract_date DATE NOT NULL,
+  counterparty_id UUID REFERENCES counterparties(id) ON DELETE SET NULL,
   object_id UUID REFERENCES objects(id) ON DELETE SET NULL,
   contract_amount DECIMAL(15, 2) NOT NULL CHECK (contract_amount >= 0),
   warranty_retention_percent DECIMAL(5, 2) CHECK (warranty_retention_percent >= 0 AND warranty_retention_percent <= 100),
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS contracts (
 
 -- Индексы для оптимизации запросов
 CREATE INDEX IF NOT EXISTS idx_contracts_contract_number ON contracts(contract_number);
+CREATE INDEX IF NOT EXISTS idx_contracts_counterparty_id ON contracts(counterparty_id);
 CREATE INDEX IF NOT EXISTS idx_contracts_object_id ON contracts(object_id);
 CREATE INDEX IF NOT EXISTS idx_contracts_contract_date ON contracts(contract_date);
 CREATE INDEX IF NOT EXISTS idx_contracts_work_dates ON contracts(work_start_date, work_end_date);
@@ -55,6 +57,7 @@ COMMENT ON TABLE contracts IS 'Реестр договоров с подрядч
 COMMENT ON COLUMN contracts.id IS 'Уникальный идентификатор договора';
 COMMENT ON COLUMN contracts.contract_number IS 'Номер договора';
 COMMENT ON COLUMN contracts.contract_date IS 'Дата заключения договора';
+COMMENT ON COLUMN contracts.counterparty_id IS 'Ссылка на контрагента (подрядчика)';
 COMMENT ON COLUMN contracts.object_id IS 'Ссылка на объект строительства';
 COMMENT ON COLUMN contracts.contract_amount IS 'Сумма по договору (рубли)';
 COMMENT ON COLUMN contracts.warranty_retention_percent IS 'Процент гарантийных удержаний';

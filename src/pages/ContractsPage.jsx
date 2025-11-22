@@ -5,12 +5,14 @@ import '../components/ContractRegistry.css'
 function ContractRegistry() {
   const [contracts, setContracts] = useState([])
   const [objects, setObjects] = useState([])
+  const [counterparties, setCounterparties] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingContract, setEditingContract] = useState(null)
   const [formData, setFormData] = useState({
     contract_number: '',
     contract_date: '',
+    counterparty_id: '',
     object_id: '',
     contract_amount: '',
     warranty_retention_percent: '',
@@ -23,6 +25,7 @@ function ContractRegistry() {
   useEffect(() => {
     fetchContracts()
     fetchObjects()
+    fetchCounterparties()
   }, [])
 
   const fetchContracts = async () => {
@@ -30,7 +33,7 @@ function ContractRegistry() {
       setLoading(true)
       const { data, error } = await supabase
         .from('contracts')
-        .select('*, objects(name)')
+        .select('*, objects(name), counterparties(name)')
         .order('contract_date', { ascending: false })
 
       if (error) throw error
@@ -53,6 +56,20 @@ function ContractRegistry() {
       setObjects(data || [])
     } catch (error) {
       console.error('Ошибка загрузки объектов:', error.message)
+    }
+  }
+
+  const fetchCounterparties = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('counterparties')
+        .select('*')
+        .order('name', { ascending: true })
+
+      if (error) throw error
+      setCounterparties(data || [])
+    } catch (error) {
+      console.error('Ошибка загрузки контрагентов:', error.message)
     }
   }
 
@@ -83,6 +100,7 @@ function ContractRegistry() {
       setFormData({
         contract_number: '',
         contract_date: '',
+        counterparty_id: '',
         object_id: '',
         contract_amount: '',
         warranty_retention_percent: '',
@@ -103,6 +121,7 @@ function ContractRegistry() {
     setFormData({
       contract_number: contract.contract_number,
       contract_date: contract.contract_date,
+      counterparty_id: contract.counterparty_id || '',
       object_id: contract.object_id || '',
       contract_amount: contract.contract_amount,
       warranty_retention_percent: contract.warranty_retention_percent || '',
@@ -135,6 +154,7 @@ function ContractRegistry() {
     setFormData({
       contract_number: '',
       contract_date: '',
+      counterparty_id: '',
       object_id: '',
       contract_amount: '',
       warranty_retention_percent: '',
@@ -177,6 +197,7 @@ function ContractRegistry() {
           <thead>
             <tr>
               <th>№ договора</th>
+              <th>Наименование контрагента</th>
               <th>Дата договора</th>
               <th>Объект работ</th>
               <th>Сумма</th>
@@ -191,7 +212,7 @@ function ContractRegistry() {
           <tbody>
             {contracts.length === 0 ? (
               <tr>
-                <td colSpan="10" className="no-data">
+                <td colSpan="11" className="no-data">
                   Нет договоров. Добавьте первый договор.
                 </td>
               </tr>
@@ -199,6 +220,7 @@ function ContractRegistry() {
               contracts.map((contract) => (
                 <tr key={contract.id}>
                   <td>{contract.contract_number}</td>
+                  <td>{contract.counterparties?.name || '-'}</td>
                   <td>{formatDate(contract.contract_date)}</td>
                   <td>{contract.objects?.name || '-'}</td>
                   <td>{formatAmount(contract.contract_amount)}</td>
@@ -277,6 +299,23 @@ function ContractRegistry() {
                     onChange={handleInputChange}
                     required
                   />
+                </div>
+
+                <div className="form-group full-width">
+                  <label>Наименование контрагента *</label>
+                  <select
+                    name="counterparty_id"
+                    value={formData.counterparty_id}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    <option value="">Выберите контрагента</option>
+                    {counterparties.map((counterparty) => (
+                      <option key={counterparty.id} value={counterparty.id}>
+                        {counterparty.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="form-group full-width">

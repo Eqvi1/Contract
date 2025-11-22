@@ -170,11 +170,21 @@
 
 .btn-secondary {
   background-color: #e5e7eb;
-  color: var(--text-secondary);
+  color: #374151;
 }
 
 .btn-secondary:hover {
   background-color: #d1d5db;
+}
+
+/* Dark theme для кнопки Отмена */
+[data-theme='dark'] .btn-secondary {
+  background-color: #4b5563;
+  color: #f9fafb;
+}
+
+[data-theme='dark'] .btn-secondary:hover {
+  background-color: #6b7280;
 }
 
 /* Action buttons */
@@ -318,6 +328,28 @@
   outline: none;
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* Dark theme для полей ввода */
+[data-theme='dark'] .form-group input,
+[data-theme='dark'] .form-group textarea,
+[data-theme='dark'] .form-group select {
+  border-color: #4b5563;
+  background-color: #374151;
+  color: #f9fafb;
+}
+
+[data-theme='dark'] .form-group input:focus,
+[data-theme='dark'] .form-group textarea:focus,
+[data-theme='dark'] .form-group select:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+}
+
+/* Select options для темной темы */
+[data-theme='dark'] .form-group select option {
+  background-color: #374151;
+  color: #f9fafb;
 }
 
 .form-group textarea {

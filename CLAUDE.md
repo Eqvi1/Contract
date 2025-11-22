@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a React application built with Vite as the build tool and development server.
+This is a React application for managing contractor operations (ОСП - отдел сопровождения подрядчиков, "Contractor Support Department"). The application is built with Vite as the build tool and development server.
+
+**Application Domain:**
+- Russian-language interface for managing contractors and construction projects
+- Tracks general information about construction objects and subcontractors
+- Manages tenders, contracts, work acceptance, and reports
+- Uses Supabase for data persistence and authentication
 
 ## Development Commands
 
@@ -48,6 +54,11 @@ npm run lint
 - Rules include react-refresh plugin for HMR compatibility
 - Configuration in `.eslintrc.cjs` (CommonJS format for ESLint config)
 
+### Additional Libraries
+
+- **react-router-dom** v7 - Client-side routing
+- **xlsx** - Excel file import/export functionality (SheetJS)
+
 ### Backend & Database
 
 - **Supabase** - Backend-as-a-Service for database, auth, and storage
@@ -60,11 +71,31 @@ npm run lint
 
 **Supabase Integration:**
 - Client initialized in `src/supabase/client.js`
-- Import: `import { supabase } from '@/supabase'`
+- Import: `import { supabase } from './supabase'` (or relative path from your component)
 - Use `useSupabase()` hook for auth state in React components
 - Database schemas and exports stored in `supabase/` directory:
   - `schemas/prod.sql` - Full database schema
+  - `schemas/` - Individual table schemas (contracts.sql, tenders.sql, general_info.sql, counterparties.sql)
+  - `migrations/` - Database migrations
   - `exports/` - JSON exports of tables, functions, triggers, indexes, enums
+
+**Database Schema:**
+- **contracts** - Contract registry with warranty and work period tracking
+  - Links to `objects` (construction sites) via `object_id`
+  - Links to `counterparties` (contractors) via `counterparty_id`
+- **counterparties** - Contractor directory with legal and contact information (INN, KPP, addresses)
+- **objects** - Construction objects/sites
+- **tenders** - Tender management
+- All tables use UUID primary keys and include `created_at`/`updated_at` timestamps
+- Row Level Security (RLS) enabled on all tables with policies for authenticated users
+- Foreign key relationships use `ON DELETE SET NULL` to preserve historical data
+
+**Data Fetching Patterns:**
+- Use Supabase's `.select()` with relationship syntax for joins: `.select('*, objects(name), counterparties(name)')`
+- This returns nested objects (e.g., `contract.counterparties.name`) instead of flat joins
+- Standard CRUD operations: `.insert()`, `.update()`, `.delete()`, `.select()`
+- Use `.order()` for sorting results
+- Filter with `.eq()`, `.neq()`, `.in()`, etc.
 
 **MCP (Model Context Protocol) Integration:**
 - MCP server configured in `.mcp/config.json`
@@ -74,41 +105,95 @@ npm run lint
 - See `.mcp/README.md` for setup instructions for different AI tools
 - Security: Set `read_only: true` for production environments
 
+### Application Architecture
+
+**Routing:**
+- **React Router v7** for client-side routing
+- Routes defined in `src/App.jsx`
+- Navigation structure:
+  - `/general` - General information page (default route)
+  - `/tenders` - Tenders management
+  - `/contracts` - Contract registry
+  - `/acceptance` - Work acceptance
+  - `/reports` - Reports and analytics
+- Sidebar navigation with `NavLink` for active state highlighting
+- Root path `/` redirects to `/general`
+
+**Theming System:**
+- Custom theme context in `src/contexts/ThemeContext.jsx`
+- Supports light/dark themes with localStorage persistence
+- Theme stored in `localStorage` under key `'theme'`
+- Applied via `data-theme` attribute on `document.documentElement`
+- Use `useTheme()` hook to access theme state and `toggleTheme()` function
+- ThemeToggle component in sidebar footer
+
+**Component Structure:**
+- `Layout.jsx` - Main layout wrapper
+- `Sidebar.jsx` - Left navigation sidebar with theme toggle
+- Page components in `src/pages/`:
+  - `GeneralInfoPage.jsx` - General info with object/subcontractor management
+  - `TendersPage.jsx` - Tender management
+  - `ContractsPage.jsx` - Contract registry
+  - `AcceptancePage.jsx` - Work acceptance
+  - `ReportsPage.jsx` - Reports
+
 ### Project Structure
 
 ```
 src/
-├── main.jsx           # Application entry point, renders App into DOM
-├── App.jsx            # Root component
-├── App.css            # Component-specific styles
-├── index.css          # Global styles and CSS variables
-├── assets/            # Static assets bundled by Vite
-└── supabase/          # Supabase configuration and utilities
-    ├── client.js      # Supabase client initialization
-    ├── hooks.js       # React hooks for Supabase (useSupabase)
-    └── index.js       # Export barrel for supabase utilities
+├── main.jsx              # Application entry point
+├── App.jsx               # Root component with router and theme provider
+├── App.css               # App-level styles
+├── index.css             # Global styles and CSS variables
+├── assets/               # Static assets bundled by Vite
+├── components/           # Reusable components
+│   ├── Sidebar.jsx       # Navigation sidebar
+│   ├── ThemeToggle.jsx   # Theme switcher
+│   ├── Layout.jsx        # Layout wrapper
+│   ├── ContractRegistry.jsx
+│   └── GeneralInfo.jsx
+├── contexts/             # React contexts
+│   └── ThemeContext.jsx  # Theme state management
+├── pages/                # Page components
+│   ├── GeneralInfoPage.jsx
+│   ├── TendersPage.jsx
+│   ├── ContractsPage.jsx
+│   ├── AcceptancePage.jsx
+│   └── ReportsPage.jsx
+└── supabase/             # Supabase configuration
+    ├── client.js         # Supabase client initialization
+    ├── hooks.js          # React hooks (useSupabase)
+    └── index.js          # Export barrel
 
-supabase/              # Database schema and configuration
+supabase/                 # Database schema and configuration
 ├── schemas/
-│   └── prod.sql       # Production database schema
-└── exports/           # Database structure exports
+│   ├── prod.sql          # Full production schema
+│   ├── contracts.sql     # Contracts table schema
+│   ├── tenders.sql       # Tenders table schema
+│   └── general_info.sql  # General info schema
+├── migrations/           # Database migrations
+└── exports/              # Database structure exports
     ├── tables.json
     ├── functions.json
     ├── triggers.json
     ├── indexes.json
     └── enums.json
 
-.mcp/                  # Model Context Protocol configuration
-├── config.json        # MCP server settings
-└── README.md          # MCP setup instructions
+.mcp/                     # Model Context Protocol configuration
+├── config.json           # MCP server settings
+├── README.md             # MCP setup instructions
+├── examples.md           # Usage examples
+└── QUICK_START.md        # Quick start guide
 ```
 
 ### Styling Approach
 
 - CSS files imported directly in JSX components
 - Global styles in `src/index.css` with CSS variables for theming
-- Dark/light mode support via `prefers-color-scheme`
+- Dark/light theme toggle via ThemeContext (not OS preference)
+- Theme applied using `data-theme` attribute on root element
 - Component-specific styles in separate CSS files
+- CSS variables should be defined for both `[data-theme="light"]` and `[data-theme="dark"]`
 
 ## Development Notes
 

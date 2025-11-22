@@ -104,10 +104,21 @@ function GeneralInfo() {
     }
   }
 
+  const getSectionTitle = () => {
+    switch (activeSection) {
+      case 'objects':
+        return 'Объекты'
+      case 'contacts':
+        return 'Контакты сотрудников'
+      default:
+        return 'Общая информация'
+    }
+  }
+
   return (
     <div className="general-info">
       <div className="general-info-header">
-        <h2>Общая информация</h2>
+        <h2>{getSectionTitle()}</h2>
       </div>
 
       <div className="section-tabs">
@@ -121,7 +132,7 @@ function GeneralInfo() {
           className={`section-tab ${activeSection === 'contacts' ? 'active' : ''}`}
           onClick={() => setActiveSection('contacts')}
         >
-          Контакты
+          Контакты сотрудников
         </button>
       </div>
 
