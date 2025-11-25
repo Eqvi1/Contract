@@ -75,20 +75,37 @@ npm run lint
 - Use `useSupabase()` hook for auth state in React components
 - Database schemas and exports stored in `supabase/` directory:
   - `schemas/prod.sql` - Full database schema
-  - `schemas/` - Individual table schemas (contracts.sql, tenders.sql, general_info.sql, counterparties.sql)
-  - `migrations/` - Database migrations
+  - `schemas/` - Individual table schemas:
+    - `general_info.sql` - Objects and contacts tables
+    - `counterparties.sql` - Counterparties table with status ENUM
+    - `counterparty_contacts.sql` - Counterparty contact persons
+    - `contracts.sql` - Contracts table
+    - `tenders.sql` - Tenders table
+  - `migrations/` - Database migrations (chronological schema changes)
   - `exports/` - JSON exports of tables, functions, triggers, indexes, enums
 
 **Database Schema:**
+- **objects** - Construction objects/sites with coordinates and status tracking
+  - `status` ENUM: `'main_construction'` or `'warranty_service'`
+  - Includes optional `map_link`, `latitude`, `longitude` for location tracking
+- **contacts** - Personnel contacts (directors, economists, engineers) linked to objects
+  - References `objects` via `object_id` with `ON DELETE SET NULL`
+- **counterparties** - Contractor directory with legal and contact information (INN, KPP, addresses)
+  - `status` ENUM: `'active'` or `'blacklist'`
+  - Includes `work_type`, `website`, and `notes` fields
+- **counterparty_contacts** - Contact persons for counterparties
+  - References `counterparties` via `counterparty_id` with `ON DELETE CASCADE`
+  - Stores contact person details (name, position, phone, email)
 - **contracts** - Contract registry with warranty and work period tracking
   - Links to `objects` (construction sites) via `object_id`
   - Links to `counterparties` (contractors) via `counterparty_id`
-- **counterparties** - Contractor directory with legal and contact information (INN, KPP, addresses)
-- **objects** - Construction objects/sites
-- **tenders** - Tender management
+  - Both foreign keys use `ON DELETE SET NULL` to preserve historical data
+- **tenders** - Tender management with status tracking and date constraints
+  - Links to `objects` via `object_id` with `ON DELETE SET NULL`
+  - Includes `tender_package_link` for document storage
 - All tables use UUID primary keys and include `created_at`/`updated_at` timestamps
 - Row Level Security (RLS) enabled on all tables with policies for authenticated users
-- Foreign key relationships use `ON DELETE SET NULL` to preserve historical data
+- Automatic `updated_at` triggers on all tables via table-specific trigger functions
 
 **Data Fetching Patterns:**
 - Use Supabase's `.select()` with relationship syntax for joins: `.select('*, objects(name), counterparties(name)')`
@@ -111,13 +128,17 @@ npm run lint
 - **React Router v7** for client-side routing
 - Routes defined in `src/App.jsx`
 - Navigation structure:
-  - `/general` - General information page (default route)
+  - **General Information** (collapsible sidebar section):
+    - `/general/objects` - Construction objects management (default route)
+    - `/general/contacts` - Contact persons management
+    - `/general/counterparties` - Contractor directory
   - `/tenders` - Tenders management
   - `/contracts` - Contract registry
   - `/acceptance` - Work acceptance
   - `/reports` - Reports and analytics
 - Sidebar navigation with `NavLink` for active state highlighting
-- Root path `/` redirects to `/general`
+- Root path `/` redirects to `/general/objects`
+- The "General Information" section in the sidebar is collapsible with expand/collapse state
 
 **Theming System:**
 - Custom theme context in `src/contexts/ThemeContext.jsx`
@@ -129,9 +150,13 @@ npm run lint
 
 **Component Structure:**
 - `Layout.jsx` - Main layout wrapper
-- `Sidebar.jsx` - Left navigation sidebar with theme toggle
+- `Sidebar.jsx` - Left navigation sidebar with collapsible sections and theme toggle
+  - Uses `useState` to manage collapsed/expanded state of "General Information" section
+  - Persists expanded state based on current route
 - Page components in `src/pages/`:
-  - `GeneralInfoPage.jsx` - General info with object/subcontractor management
+  - `ObjectsPage.jsx` - Construction objects management
+  - `ContactsPage.jsx` - Contact persons management
+  - `CounterpartiesPage.jsx` - Contractor directory
   - `TendersPage.jsx` - Tender management
   - `ContractsPage.jsx` - Contract registry
   - `AcceptancePage.jsx` - Work acceptance
@@ -155,7 +180,9 @@ src/
 ├── contexts/             # React contexts
 │   └── ThemeContext.jsx  # Theme state management
 ├── pages/                # Page components
-│   ├── GeneralInfoPage.jsx
+│   ├── ObjectsPage.jsx
+│   ├── ContactsPage.jsx
+│   ├── CounterpartiesPage.jsx
 │   ├── TendersPage.jsx
 │   ├── ContractsPage.jsx
 │   ├── AcceptancePage.jsx

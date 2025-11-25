@@ -13,6 +13,9 @@ function CounterpartiesPage() {
   const [editingCounterparty, setEditingCounterparty] = useState(null)
   const [selectedCounterparty, setSelectedCounterparty] = useState(null)
   const [editingContact, setEditingContact] = useState(null)
+  const [selectedCounterpartyIds, setSelectedCounterpartyIds] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [workTypeFilter, setWorkTypeFilter] = useState('')
   const fileInputRef = useRef(null)
 
   const [counterpartyFormData, setCounterpartyFormData] = useState({
@@ -301,6 +304,79 @@ function CounterpartiesPage() {
     }
   }
 
+  // Функции для массового выбора и удаления
+  const handleSelectCounterparty = (id) => {
+    setSelectedCounterpartyIds(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(selectedId => selectedId !== id)
+      } else {
+        return [...prev, id]
+      }
+    })
+  }
+
+  const handleSelectAll = () => {
+    if (selectedCounterpartyIds.length === counterparties.length) {
+      setSelectedCounterpartyIds([])
+    } else {
+      setSelectedCounterpartyIds(counterparties.map(cp => cp.id))
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedCounterpartyIds.length === 0) {
+      alert('Выберите контрагентов для удаления')
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Вы уверены, что хотите удалить ${selectedCounterpartyIds.length} ${
+        selectedCounterpartyIds.length === 1 ? 'контрагента' :
+        selectedCounterpartyIds.length < 5 ? 'контрагента' : 'контрагентов'
+      }?`
+    )
+
+    if (!confirmed) return
+
+    try {
+      const { error } = await supabase
+        .from('counterparties')
+        .delete()
+        .in('id', selectedCounterpartyIds)
+
+      if (error) throw error
+
+      setSelectedCounterpartyIds([])
+      fetchCounterparties()
+      alert(`Успешно удалено контрагентов: ${selectedCounterpartyIds.length}`)
+    } catch (error) {
+      console.error('Ошибка массового удаления:', error.message)
+      alert('Ошибка удаления: ' + error.message)
+    }
+  }
+
+  // Функция для обновления статуса контрагента
+  const handleStatusChange = async (counterpartyId, newStatus) => {
+    try {
+      const { error } = await supabase
+        .from('counterparties')
+        .update({ status: newStatus })
+        .eq('id', counterpartyId)
+
+      if (error) throw error
+
+      // Обновляем локальное состояние
+      setCounterparties(prev =>
+        prev.map(cp =>
+          cp.id === counterpartyId ? { ...cp, status: newStatus } : cp
+        )
+      )
+    } catch (error) {
+      console.error('Ошибка обновления статуса:', error.message)
+      alert('Ошибка обновления статуса: ' + error.message)
+    }
+  }
+
   const handleAddNewCounterparty = () => {
     setEditingCounterparty(null)
     setCounterpartyFormData({
@@ -346,9 +422,80 @@ function CounterpartiesPage() {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]]
       const jsonData = XLSX.utils.sheet_to_json(worksheet)
 
-      const counterpartiesToInsert = []
-      const contactsToInsert = []
+      // Логируем первую строку для проверки названий столбцов
+      if (jsonData.length > 0) {
+        console.log('=== ДИАГНОСТИКА ИМПОРТА ===')
+        console.log('Столбцы в Excel файле:', Object.keys(jsonData[0]))
+        console.log('Первая строка данных:', jsonData[0])
+
+        // Проверяем конкретно наличие столбца Email контакта
+        const emailColumn = Object.keys(jsonData[0]).find(key =>
+          key.toLowerCase().includes('email') || key.toLowerCase().includes('почт')
+        )
+        if (emailColumn) {
+          console.log(`✓ Найден столбец с email: "${emailColumn}"`)
+          console.log(`  Значение в первой строке: "${jsonData[0][emailColumn]}"`)
+        } else {
+          console.warn('⚠️ Столбец Email контакта не найден!')
+          console.warn('  Доступные столбцы:', Object.keys(jsonData[0]))
+        }
+
+        // Проверяем соответствие заголовков и столбцов
+        const headers = XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0]
+        console.log('Заголовки со столбцами:')
+        headers.forEach((header, index) => {
+          const col = XLSX.utils.encode_col(index)
+          console.log(`  Столбец ${col}: "${header}"`)
+        })
+
+        // Проверяем наличие гиперссылок в worksheet
+        const range = XLSX.utils.decode_range(worksheet['!ref'])
+        console.log('Проверяем гиперссылки в первых 5 строках:')
+        for (let R = range.s.r; R <= Math.min(range.s.r + 5, range.e.r); R++) {
+          for (let C = range.s.c; C <= range.e.c; C++) {
+            const cellAddress = XLSX.utils.encode_cell({ r: R, c: C })
+            const cell = worksheet[cellAddress]
+            if (cell && cell.l) { // l - это гиперссылка
+              const colLetter = XLSX.utils.encode_col(C)
+              const headerName = headers[C] || 'без заголовка'
+              console.log(`Ячейка ${cellAddress} (столбец ${colLetter} - "${headerName}"): значение="${cell.v}", ссылка="${cell.l.Target}"`)
+            }
+          }
+        }
+      }
+
       const errors = []
+      // Группируем данные по контрагентам (по имени + ИНН для уникальности)
+      const counterpartiesMap = new Map()
+
+      // Функция для извлечения гиперссылок из ячейки
+      const getHyperlinkFromCell = (rowIndex, columnName) => {
+        // Находим индекс столбца по имени
+        const headers = XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0]
+        const colIndex = headers.indexOf(columnName)
+        if (colIndex === -1) return null
+
+        // Получаем адрес ячейки (rowIndex + 1 т.к. есть заголовок, + 1 т.к. начинается с 1)
+        const cellAddress = XLSX.utils.encode_cell({ r: rowIndex + 1, c: colIndex })
+        const cell = worksheet[cellAddress]
+
+        // Проверяем наличие гиперссылки
+        if (cell && cell.l && cell.l.Target) {
+          return cell.l.Target
+        }
+        return null
+      }
+
+      // Определяем названия столбцов для контактов (с учетом возможных вариантов написания)
+      const getColumnValue = (row, possibleNames) => {
+        for (const name of possibleNames) {
+          const key = Object.keys(row).find(k => k.trim().toLowerCase() === name.toLowerCase())
+          if (key && row[key]) {
+            return String(row[key]).trim()
+          }
+        }
+        return null
+      }
 
       jsonData.forEach((row, index) => {
         const rowNumber = index + 2
@@ -359,38 +506,94 @@ function CounterpartiesPage() {
           return
         }
 
-        // Создаем ID для контрагента (временный, для связи с контактами)
-        const tempId = `temp_${index}`
+        const counterpartyName = String(row['Наименование организации']).trim()
+        const counterpartyInn = row['ИНН'] ? String(row['ИНН']).trim() : ''
 
-        // Добавляем контрагента
-        counterpartiesToInsert.push({
-          tempId,
-          name: String(row['Наименование организации']).trim(),
-          work_type: row['Вид работ'] ? String(row['Вид работ']).trim() : null,
-          inn: row['ИНН'] ? String(row['ИНН']).trim() : null,
-          kpp: row['КПП'] ? String(row['КПП']).trim() : null,
-          legal_address: row['Юридический адрес'] ? String(row['Юридический адрес']).trim() : null,
-          actual_address: row['Фактический адрес'] ? String(row['Фактический адрес']).trim() : null,
-          website: row['Ссылка на сайт'] ? String(row['Ссылка на сайт']).trim() : null,
-          status: row['Статус'] === 'Черный список' ? 'blacklist' : 'active',
-          notes: row['Примечание'] ? String(row['Примечание']).trim() : null,
-        })
+        // Уникальный ключ для группировки (имя + ИНН)
+        const counterpartyKey = `${counterpartyName}_${counterpartyInn}`
 
-        // Добавляем контакт, если указан
-        if (row['ФИО контакта']) {
-          contactsToInsert.push({
-            tempCounterpartyId: tempId,
-            full_name: String(row['ФИО контакта']).trim(),
-            position: row['Должность контакта'] ? String(row['Должность контакта']).trim() : null,
-            phone: row['Телефон контакта'] ? String(row['Телефон контакта']).trim() : null,
-            email: row['Email контакта'] ? String(row['Email контакта']).trim() : null,
+        // Если контрагент уже есть в Map, добавляем только контакт
+        if (!counterpartiesMap.has(counterpartyKey)) {
+          // Пытаемся получить ссылку на сайт из гиперссылки или из обычного текста
+          let websiteUrl = null
+
+          // Ищем название столбца с учетом возможных пробелов
+          const websiteColumnNames = Object.keys(row).filter(key => key.trim() === 'Ссылка на сайт')
+          const websiteColumnName = websiteColumnNames[0] || 'Ссылка на сайт'
+
+          const hyperlinkUrl = getHyperlinkFromCell(index, websiteColumnName)
+
+          if (hyperlinkUrl) {
+            websiteUrl = hyperlinkUrl
+            console.log(`Строка ${rowNumber}: Найдена гиперссылка для "${counterpartyName}": ${hyperlinkUrl}`)
+          } else if (row[websiteColumnName]) {
+            websiteUrl = String(row[websiteColumnName]).trim()
+            console.log(`Строка ${rowNumber}: Найдена текстовая ссылка для "${counterpartyName}": ${websiteUrl}`)
+          } else {
+            console.log(`Строка ${rowNumber}: Ссылка на сайт отсутствует для "${counterpartyName}"`)
+          }
+
+          // Обрезаем значения до максимальной длины, разрешенной в БД
+          const truncateString = (str, maxLength) => {
+            if (!str) return null
+            const trimmed = str.trim()
+            if (trimmed.length <= maxLength) return trimmed
+            console.warn(`Значение обрезано с ${trimmed.length} до ${maxLength} символов: ${trimmed.substring(0, 50)}...`)
+            return trimmed.substring(0, maxLength)
+          }
+
+          counterpartiesMap.set(counterpartyKey, {
+            name: truncateString(counterpartyName, 255),
+            work_type: truncateString(row['Вид работ'] ? String(row['Вид работ']) : null, 255),
+            inn: truncateString(counterpartyInn || null, 12),
+            kpp: truncateString(row['КПП'] ? String(row['КПП']) : null, 9),
+            legal_address: row['Юридический адрес'] ? String(row['Юридический адрес']).trim() : null,
+            actual_address: row['Фактический адрес'] ? String(row['Фактический адрес']).trim() : null,
+            website: truncateString(websiteUrl, 500),
+            status: row['Статус'] === 'Черный список' ? 'blacklist' : 'active',
+            notes: row['Примечание'] ? String(row['Примечание']).trim() : null,
+            contacts: []
           })
+        }
+
+        // Добавляем контакт к контрагенту (если указан)
+        const contactFullName = getColumnValue(row, ['ФИО контакта', 'ФИО', 'Контактное лицо'])
+        if (contactFullName) {
+          const counterpartyData = counterpartiesMap.get(counterpartyKey)
+
+          // Используем гибкий поиск для всех полей контакта
+          const contactEmail = getColumnValue(row, [
+            'Email контакта',
+            'E-mail контакта',
+            'Email',
+            'E-mail',
+            'Электронная почта',
+            'Почта'
+          ])
+
+          const contactData = {
+            full_name: contactFullName,
+            position: getColumnValue(row, ['Должность контакта', 'Должность']),
+            phone: getColumnValue(row, ['Телефон контакта', 'Телефон', 'Тел.']),
+            email: contactEmail,
+          }
+          console.log(`Строка ${rowNumber}: Добавляем контакт для "${counterpartyName}":`, contactData)
+
+          if (!contactEmail) {
+            console.warn(`Строка ${rowNumber}: Email не найден для контакта "${contactFullName}"`)
+          }
+
+          counterpartyData.contacts.push(contactData)
+        } else {
+          console.log(`Строка ${rowNumber}: Поле "ФИО контакта" пустое или отсутствует`)
         }
       })
 
       if (errors.length > 0) {
         alert(`Обнаружены ошибки при импорте:\n\n${errors.join('\n')}\n\nКорректные данные будут импортированы.`)
       }
+
+      const counterpartiesToInsert = Array.from(counterpartiesMap.values())
 
       if (counterpartiesToInsert.length === 0) {
         alert('Не найдено корректных данных для импорта.')
@@ -399,7 +602,7 @@ function CounterpartiesPage() {
       }
 
       // Сохраняем контрагентов
-      const counterpartiesToDB = counterpartiesToInsert.map(({ tempId, ...rest }) => rest)
+      const counterpartiesToDB = counterpartiesToInsert.map(({ contacts, ...rest }) => rest)
       const { data: insertedCounterparties, error: counterpartiesError } = await supabase
         .from('counterparties')
         .insert(counterpartiesToDB)
@@ -407,30 +610,59 @@ function CounterpartiesPage() {
 
       if (counterpartiesError) throw counterpartiesError
 
-      // Сопоставляем временные ID с реальными
-      const idMapping = {}
-      counterpartiesToInsert.forEach((cp, index) => {
-        idMapping[cp.tempId] = insertedCounterparties[index].id
-      })
+      console.log('Импортировано контрагентов:', insertedCounterparties.length)
+      console.log('Данные контрагентов с контактами:', counterpartiesToInsert.map(c => ({
+        name: c.name,
+        inn: c.inn,
+        contactsCount: c.contacts.length
+      })))
 
-      // Сохраняем контакты
-      if (contactsToInsert.length > 0) {
-        const contactsToDB = contactsToInsert.map(({ tempCounterpartyId, ...contact }) => ({
-          ...contact,
-          counterparty_id: idMapping[tempCounterpartyId]
-        }))
+      // Сопоставляем контрагентов по имени и ИНН для надежности
+      const counterpartiesWithContacts = counterpartiesToInsert.filter(c => c.contacts && c.contacts.length > 0)
+      console.log('Контрагентов с контактами для импорта:', counterpartiesWithContacts.length)
 
+      // Собираем все контакты для массовой вставки
+      const allContactsToInsert = []
+
+      for (const counterpartyData of counterpartiesWithContacts) {
+        // Находим соответствующего вставленного контрагента по имени и ИНН
+        const insertedCounterparty = insertedCounterparties.find(
+          ic => ic.name === counterpartyData.name && ic.inn === counterpartyData.inn
+        )
+
+        if (insertedCounterparty) {
+          counterpartyData.contacts.forEach(contact => {
+            allContactsToInsert.push({
+              ...contact,
+              counterparty_id: insertedCounterparty.id
+            })
+          })
+        } else {
+          console.error('Не найден контрагент для контактов:', counterpartyData.name, counterpartyData.inn)
+        }
+      }
+
+      console.log('Всего контактов для вставки:', allContactsToInsert.length)
+
+      // Вставляем все контакты одним запросом
+      let totalContactsInserted = 0
+      if (allContactsToInsert.length > 0) {
         const { error: contactsError } = await supabase
           .from('counterparty_contacts')
-          .insert(contactsToDB)
+          .insert(allContactsToInsert)
 
-        if (contactsError) throw contactsError
+        if (contactsError) {
+          console.error('Ошибка вставки контактов:', contactsError)
+          throw contactsError
+        }
+        totalContactsInserted = allContactsToInsert.length
+        console.log('Успешно вставлено контактов:', totalContactsInserted)
       }
 
       alert(
         `Успешно импортировано:\n` +
         `- Контрагентов: ${insertedCounterparties.length}\n` +
-        `- Контактов: ${contactsToInsert.length}` +
+        `- Контактов: ${totalContactsInserted}` +
         `${errors.length > 0 ? `\n\nПропущено строк с ошибками: ${errors.length}` : ''}`
       )
 
@@ -443,6 +675,53 @@ function CounterpartiesPage() {
       setImporting(false)
     }
   }
+
+  // Получить уникальные виды работ
+  const uniqueWorkTypes = [...new Set(
+    counterparties
+      .map(c => c.work_type)
+      .filter(wt => wt && wt.trim() !== '')
+  )].sort()
+
+  // Функция фильтрации контрагентов
+  const filteredCounterparties = counterparties.filter(counterparty => {
+    // Фильтр по виду работ
+    if (workTypeFilter && counterparty.work_type !== workTypeFilter) {
+      return false
+    }
+
+    // Поиск по всем полям
+    if (!searchQuery.trim()) return true
+
+    const query = searchQuery.toLowerCase()
+
+    // Поиск по основным полям контрагента
+    const matchesCounterparty =
+      (counterparty.name && counterparty.name.toLowerCase().includes(query)) ||
+      (counterparty.work_type && counterparty.work_type.toLowerCase().includes(query)) ||
+      (counterparty.inn && counterparty.inn.toLowerCase().includes(query)) ||
+      (counterparty.kpp && counterparty.kpp.toLowerCase().includes(query)) ||
+      (counterparty.legal_address && counterparty.legal_address.toLowerCase().includes(query)) ||
+      (counterparty.actual_address && counterparty.actual_address.toLowerCase().includes(query)) ||
+      (counterparty.website && counterparty.website.toLowerCase().includes(query)) ||
+      (counterparty.notes && counterparty.notes.toLowerCase().includes(query))
+
+    // Поиск по контактам
+    const matchesContact = counterparty.counterparty_contacts && counterparty.counterparty_contacts.some(contact =>
+      (contact.full_name && contact.full_name.toLowerCase().includes(query)) ||
+      (contact.position && contact.position.toLowerCase().includes(query)) ||
+      (contact.phone && contact.phone.toLowerCase().includes(query)) ||
+      (contact.email && contact.email.toLowerCase().includes(query))
+    )
+
+    return matchesCounterparty || matchesContact
+  }).sort((a, b) => {
+    // Сортировка: активные сверху, черный список снизу
+    if (a.status === 'blacklist' && b.status !== 'blacklist') return 1
+    if (a.status !== 'blacklist' && b.status === 'blacklist') return -1
+    // Если статусы одинаковые, сортируем по имени
+    return (a.name || '').localeCompare(b.name || '', 'ru')
+  })
 
   return (
     <div className="general-info">
@@ -465,6 +744,24 @@ function CounterpartiesPage() {
             >
               {importing ? 'Импорт...' : '📥 Импорт из Excel'}
             </button>
+            {selectedCounterpartyIds.length > 0 && (
+              <button
+                className="btn-delete"
+                onClick={handleBulkDelete}
+                style={{
+                  marginLeft: 'auto',
+                  backgroundColor: '#dc2626',
+                  color: 'white',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+              >
+                🗑️ Удалить выбранные ({selectedCounterpartyIds.length})
+              </button>
+            )}
             <input
               ref={fileInputRef}
               type="file"
@@ -474,12 +771,80 @@ function CounterpartiesPage() {
             />
           </div>
 
+          <div style={{ marginBottom: '1rem' }}>
+            <input
+              type="text"
+              placeholder="🔍 Поиск по всем полям..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.75rem 1rem',
+                fontSize: '1rem',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                backgroundColor: 'var(--bg-color)',
+                color: 'var(--text-color)'
+              }}
+            />
+          </div>
+
           <div className="table-container">
             <table className="data-table">
               <thead>
                 <tr>
+                  <th style={{ width: '40px' }}>
+                    <input
+                      type="checkbox"
+                      checked={counterparties.length > 0 && selectedCounterpartyIds.length === counterparties.length}
+                      onChange={handleSelectAll}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </th>
                   <th>Наименование</th>
-                  <th>Вид работ</th>
+                  <th>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span>Вид работ</span>
+                      <select
+                        value={workTypeFilter}
+                        onChange={(e) => setWorkTypeFilter(e.target.value)}
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          fontSize: '0.9rem',
+                          fontWeight: '500',
+                          border: '2px solid var(--primary-color)',
+                          borderRadius: '6px',
+                          backgroundColor: workTypeFilter ? 'var(--primary-color)' : '#ffffff',
+                          color: workTypeFilter ? 'white' : '#000000',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                          transition: 'all 0.2s ease',
+                          minWidth: '120px'
+                        }}
+                        onMouseOver={(e) => {
+                          e.target.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)'
+                          e.target.style.transform = 'translateY(-1px)'
+                        }}
+                        onMouseOut={(e) => {
+                          e.target.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)'
+                          e.target.style.transform = 'translateY(0)'
+                        }}
+                      >
+                        <option value="" style={{ backgroundColor: '#ffffff', color: '#000000', padding: '0.5rem' }}>
+                          🔍 Все
+                        </option>
+                        {uniqueWorkTypes.map(workType => (
+                          <option
+                            key={workType}
+                            value={workType}
+                            style={{ backgroundColor: '#ffffff', color: '#000000', padding: '0.5rem' }}
+                          >
+                            {workType}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </th>
                   <th>ИНН</th>
                   <th>Статус</th>
                   <th>Примечание</th>
@@ -489,29 +854,51 @@ function CounterpartiesPage() {
                 </tr>
               </thead>
               <tbody>
-                {counterparties.length === 0 ? (
+                {filteredCounterparties.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="no-data">
-                      Нет контрагентов. Добавьте первого контрагента.
+                    <td colSpan="9" className="no-data">
+                      {searchQuery.trim() ? 'Контрагенты не найдены' : 'Нет контрагентов. Добавьте первого контрагента.'}
                     </td>
                   </tr>
                 ) : (
-                  counterparties.map((counterparty) => (
+                  filteredCounterparties.map((counterparty) => (
                     <tr key={counterparty.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedCounterpartyIds.includes(counterparty.id)}
+                          onChange={() => handleSelectCounterparty(counterparty.id)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </td>
                       <td>{counterparty.name}</td>
                       <td>{counterparty.work_type || '-'}</td>
                       <td>{counterparty.inn || '-'}</td>
                       <td>
-                        <span style={{
-                          padding: '0.25rem 0.5rem',
-                          borderRadius: '4px',
-                          fontSize: '0.875rem',
-                          fontWeight: '500',
-                          backgroundColor: counterparty.status === 'blacklist' ? '#fee2e2' : '#d1fae5',
-                          color: counterparty.status === 'blacklist' ? '#991b1b' : '#065f46'
-                        }}>
-                          {counterparty.status === 'blacklist' ? 'Черный список' : 'Действующий'}
-                        </span>
+                        <select
+                          value={counterparty.status || 'active'}
+                          onChange={(e) => handleStatusChange(counterparty.id, e.target.value)}
+                          style={{
+                            padding: '0.4rem 0.75rem',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            border: '2px solid',
+                            borderColor: counterparty.status === 'blacklist' ? '#dc2626' : '#16a34a',
+                            borderRadius: '6px',
+                            backgroundColor: counterparty.status === 'blacklist' ? '#fee2e2' : '#d1fae5',
+                            color: counterparty.status === 'blacklist' ? '#991b1b' : '#065f46',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <option value="active" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
+                            ✓ Действующий
+                          </option>
+                          <option value="blacklist" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
+                            ✕ Черный список
+                          </option>
+                        </select>
                       </td>
                       <td style={{ maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {counterparty.notes || '-'}
@@ -524,7 +911,7 @@ function CounterpartiesPage() {
                             rel="noopener noreferrer"
                             style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}
                           >
-                            {counterparty.website}
+                            Ссылка на сайт
                           </a>
                         ) : '-'}
                       </td>
@@ -1216,8 +1603,8 @@ function CounterpartiesPage() {
                 <ul style={{ margin: '0', paddingLeft: '1.5rem', fontSize: '0.875rem', color: '#1e3a8a' }}>
                   <li style={{ marginBottom: '0.25rem' }}>Названия столбцов должны точно совпадать с указанными выше</li>
                   <li style={{ marginBottom: '0.25rem' }}>Первая строка файла должна содержать заголовки столбцов</li>
-                  <li style={{ marginBottom: '0.25rem' }}>Каждая строка = один контрагент с одним контактом (опционально)</li>
-                  <li style={{ marginBottom: '0.25rem' }}>Если у контрагента несколько контактов, добавьте их вручную после импорта</li>
+                  <li style={{ marginBottom: '0.25rem' }}>Чтобы добавить несколько контактов для одного контрагента, укажите контрагента в нескольких строках с одинаковым названием и ИНН</li>
+                  <li style={{ marginBottom: '0.25rem' }}>Контрагенты группируются по названию и ИНН (дубли не создаются)</li>
                   <li>Пустые ячейки допускаются (кроме "Наименование организации")</li>
                 </ul>
               </div>
@@ -1230,10 +1617,14 @@ function CounterpartiesPage() {
                 <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: 'var(--text-primary)' }}>
                   📝 Пример структуры файла
                 </h4>
-                <p style={{ margin: '0', fontSize: '0.8125rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.8125rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
                   | Наименование организации | ИНН | КПП | ... | ФИО контакта | Должность контакта | ...<br/>
                   | ООО "Стройком" | 7728123456 | 772801001 | ... | Иванов И.И. | Директор | ...<br/>
-                  | ЗАО "Ремонт+" | 7729654321 | ... | ... | Петров П.П. | Главный инженер | ...
+                  | ООО "Стройком" | 7728123456 | 772801001 | ... | Сидоров С.С. | Главный инженер | ...<br/>
+                  | ЗАО "Ремонт+" | 7729654321 | ... | ... | Петров П.П. | Менеджер | ...
+                </p>
+                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                  ℹ️ В этом примере для ООО "Стройком" будут импортированы 2 контакта, а для ЗАО "Ремонт+" - 1 контакт
                 </p>
               </div>
             </div>
