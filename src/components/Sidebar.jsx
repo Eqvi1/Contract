@@ -1,10 +1,14 @@
 import { useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useRole } from '../contexts/RoleContext'
 import ThemeToggle from './ThemeToggle'
 import './Sidebar.css'
 
 function Sidebar() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { logout } = useRole()
+
   const [generalInfoExpanded, setGeneralInfoExpanded] = useState(
     location.pathname.startsWith('/general')
   )
@@ -220,6 +224,15 @@ function Sidebar() {
 
       <div className="sidebar-footer">
         <ThemeToggle />
+        <button
+          className="logout-btn"
+          onClick={() => {
+            logout()
+            navigate('/login')
+          }}
+        >
+          Выйти
+        </button>
       </div>
     </aside>
   )
