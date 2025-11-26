@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import '../components/Tenders.css'
 
-function TendersPage() {
+function TendersPage({ department = 'construction' }) {
+  const navigate = useNavigate()
   const [tenders, setTenders] = useState([])
   const [objects, setObjects] = useState([])
   const [counterparties, setCounterparties] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [activeTab, setActiveTab] = useState('active') // 'active' or 'completed'
   const [editingTender, setEditingTender] = useState(null)
   const [expandedTenderId, setExpandedTenderId] = useState(null)
   const [tenderCounterparties, setTenderCounterparties] = useState({})
@@ -16,6 +19,9 @@ function TendersPage() {
   const [counterpartySearchQuery, setCounterpartySearchQuery] = useState('')
   const [counterpartyWorkTypeFilter, setCounterpartyWorkTypeFilter] = useState('')
   const [selectedCounterpartyIds, setSelectedCounterpartyIds] = useState([])
+  const [showWinnerModal, setShowWinnerModal] = useState(false)
+  const [tenderForWinnerSelection, setTenderForWinnerSelection] = useState(null)
+  const [selectedWinnerId, setSelectedWinnerId] = useState(null)
   const [formData, setFormData] = useState({
     object_id: '',
     work_description: '',
@@ -24,6 +30,10 @@ function TendersPage() {
     end_date: '',
     tender_package_link: '',
   })
+
+  // Определяем статус объекта в зависимости от отдела
+  const objectStatus = department === 'construction' ? 'main_construction' : 'warranty_service'
+  const pageTitle = department === 'construction' ? 'Тендеры — Основное строительство' : 'Тендеры — Гарантийный отдел'
 
   const statusOptions = ['Не начат', 'Идет тендерная процедура', 'Завершен']
 
@@ -40,29 +50,33 @@ function TendersPage() {
 
   const getCounterpartyStatusColor = (status) => {
     const colors = {
-      'request_sent': '#3b82f6',
-      'declined': '#dc2626',
-      'proposal_provided': '#16a34a'
+      'request_sent': '#6366f1',
+      'declined': '#b91c1c',
+      'proposal_provided': '#15803d'
     }
-    return colors[status] || '#6b7280'
+    return colors[status] || '#64748b'
   }
 
   useEffect(() => {
     fetchTenders()
     fetchObjects()
     fetchCounterparties()
-  }, [])
+  }, [department])
 
   const fetchTenders = async () => {
     try {
       setLoading(true)
       const { data, error } = await supabase
         .from('tenders')
-        .select('*, objects(name)')
+        .select('*, objects(name, status), winner:counterparties!winner_counterparty_id(id, name)')
         .order('start_date', { ascending: false })
 
       if (error) throw error
-      setTenders(data || [])
+      // Фильтруем тендеры по статусу объекта
+      const filteredTenders = (data || []).filter(
+        tender => tender.objects?.status === objectStatus
+      )
+      setTenders(filteredTenders)
     } catch (error) {
       console.error('Ошибка загрузки тендеров:', error.message)
     } finally {
@@ -75,6 +89,7 @@ function TendersPage() {
       const { data, error } = await supabase
         .from('objects')
         .select('*')
+        .eq('status', objectStatus)
         .order('name', { ascending: true })
 
       if (error) throw error
@@ -303,6 +318,21 @@ function TendersPage() {
   }
 
   const handleStatusChange = async (tenderId, newStatus) => {
+    // Если статус меняется на "Завершен", показываем модальное окно выбора победителя
+    if (newStatus === 'Завершен') {
+      const tender = tenders.find(t => t.id === tenderId)
+      setTenderForWinnerSelection(tender)
+
+      // Загружаем контрагентов тендера если еще не загружены
+      if (!tenderCounterparties[tenderId]) {
+        await fetchTenderCounterparties(tenderId)
+      }
+
+      setSelectedWinnerId(tender?.winner_counterparty_id || null)
+      setShowWinnerModal(true)
+      return
+    }
+
     try {
       const { error } = await supabase
         .from('tenders')
@@ -314,6 +344,53 @@ function TendersPage() {
     } catch (error) {
       console.error('Ошибка изменения статуса:', error.message)
       alert('Ошибка изменения статуса: ' + error.message)
+    }
+  }
+
+  const handleConfirmWinner = async () => {
+    if (!tenderForWinnerSelection) return
+
+    try {
+      // Обновляем статус тендера
+      const { error: tenderError } = await supabase
+        .from('tenders')
+        .update({
+          status: 'Завершен',
+          winner_counterparty_id: selectedWinnerId
+        })
+        .eq('id', tenderForWinnerSelection.id)
+
+      if (tenderError) throw tenderError
+
+      // Если выбран победитель, создаем договор на согласовании
+      if (selectedWinnerId) {
+        const today = new Date().toISOString().split('T')[0]
+
+        const { error: contractError } = await supabase
+          .from('contracts')
+          .insert([{
+            tender_id: tenderForWinnerSelection.id,
+            counterparty_id: selectedWinnerId,
+            object_id: tenderForWinnerSelection.object_id,
+            contract_number: `Проект-${Date.now()}`,
+            contract_date: today,
+            contract_amount: 0,
+            status: 'pending'
+          }])
+
+        if (contractError) {
+          console.error('Ошибка создания договора:', contractError.message)
+          // Не прерываем выполнение, тендер уже завершен
+        }
+      }
+
+      setShowWinnerModal(false)
+      setTenderForWinnerSelection(null)
+      setSelectedWinnerId(null)
+      fetchTenders()
+    } catch (error) {
+      console.error('Ошибка завершения тендера:', error.message)
+      alert('Ошибка завершения тендера: ' + error.message)
     }
   }
 
@@ -335,12 +412,47 @@ function TendersPage() {
     return <div className="loading">Загрузка...</div>
   }
 
+  // Фильтрация тендеров по активной вкладке
+  const filteredByTab = tenders.filter(tender => {
+    if (activeTab === 'completed') {
+      return tender.status === 'Завершен'
+    } else {
+      return tender.status !== 'Завершен'
+    }
+  })
+
+  // Подсчет количества тендеров для каждой вкладки
+  const activeTendersCount = tenders.filter(t => t.status !== 'Завершен').length
+  const completedTendersCount = tenders.filter(t => t.status === 'Завершен').length
+
   return (
     <div className="tenders-page">
       <div className="page-header">
-        <h2>Тендеры</h2>
+        <h2>{pageTitle}</h2>
         <button className="btn-primary" onClick={handleAddNew}>
           + Добавить тендер
+        </button>
+      </div>
+
+      {/* Вкладки */}
+      <div className="tender-tabs">
+        <button
+          className={`tender-tab ${activeTab === 'active' ? 'active' : ''}`}
+          onClick={() => setActiveTab('active')}
+        >
+          Актуальные тендеры
+          {activeTendersCount > 0 && (
+            <span className="tender-tab-count">{activeTendersCount}</span>
+          )}
+        </button>
+        <button
+          className={`tender-tab ${activeTab === 'completed' ? 'active' : ''}`}
+          onClick={() => setActiveTab('completed')}
+        >
+          Завершенные
+          {completedTendersCount > 0 && (
+            <span className="tender-tab-count completed">{completedTendersCount}</span>
+          )}
         </button>
       </div>
 
@@ -352,6 +464,7 @@ function TendersPage() {
               <th>Наименование объекта</th>
               <th>Описание работ</th>
               <th>Статус</th>
+              {activeTab === 'completed' && <th>Победитель</th>}
               <th>Дата начала</th>
               <th>Дата окончания</th>
               <th>Тендерный пакет</th>
@@ -359,14 +472,16 @@ function TendersPage() {
             </tr>
           </thead>
           <tbody>
-            {tenders.length === 0 ? (
+            {filteredByTab.length === 0 ? (
               <tr>
-                <td colSpan="8" className="no-data">
-                  Нет тендеров. Добавьте первый тендер.
+                <td colSpan={activeTab === 'completed' ? 9 : 8} className="no-data">
+                  {activeTab === 'completed'
+                    ? 'Нет завершенных тендеров'
+                    : 'Нет актуальных тендеров. Добавьте первый тендер.'}
                 </td>
               </tr>
             ) : (
-              tenders.map((tender) => (
+              filteredByTab.map((tender) => (
                 <>
                   <tr key={tender.id}>
                     <td>
@@ -384,8 +499,42 @@ function TendersPage() {
                         {expandedTenderId === tender.id ? '▼' : '▶'}
                       </button>
                     </td>
-                    <td>{tender.objects?.name || '-'}</td>
-                    <td>{tender.work_description}</td>
+                    <td>
+                      <button
+                        onClick={() => navigate(`/tenders/${tender.id}`)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--primary-color)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          padding: 0,
+                          fontSize: 'inherit',
+                          fontWeight: '600',
+                          textDecoration: 'underline'
+                        }}
+                        title="Открыть тендер"
+                      >
+                        {tender.objects?.name || '-'}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => navigate(`/tenders/${tender.id}`)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-primary)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          padding: 0,
+                          fontSize: 'inherit'
+                        }}
+                        title="Открыть тендер"
+                      >
+                        {tender.work_description}
+                      </button>
+                    </td>
                     <td>
                       <select
                         className={`status-select ${getStatusBadgeClass(tender.status)}`}
@@ -399,6 +548,34 @@ function TendersPage() {
                         ))}
                       </select>
                     </td>
+                    {activeTab === 'completed' && (
+                      <td>
+                        {tender.winner ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.375rem 0.75rem',
+                            backgroundColor: '#dcfce7',
+                            color: '#166534',
+                            borderRadius: '6px',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            border: '1px solid #86efac'
+                          }}>
+                            🏆 {tender.winner.name}
+                          </span>
+                        ) : (
+                          <span style={{
+                            color: 'var(--text-tertiary)',
+                            fontStyle: 'italic',
+                            fontSize: '0.875rem'
+                          }}>
+                            Не выбран
+                          </span>
+                        )}
+                      </td>
+                    )}
                     <td>{formatDate(tender.start_date)}</td>
                     <td>{formatDate(tender.end_date)}</td>
                     <td>
@@ -436,7 +613,7 @@ function TendersPage() {
                   </tr>
                   {expandedTenderId === tender.id && (
                     <tr key={`${tender.id}-counterparties`}>
-                      <td colSpan="8" style={{ padding: '1.5rem', backgroundColor: 'var(--card-bg)', borderTop: '2px solid var(--primary-color)' }}>
+                      <td colSpan={activeTab === 'completed' ? 9 : 8} style={{ padding: '1.5rem', backgroundColor: 'var(--card-bg)', borderTop: '2px solid var(--primary-color)' }}>
                         <div style={{ marginBottom: '1rem' }}>
                           <button
                             className="btn-primary"
@@ -689,11 +866,13 @@ function TendersPage() {
                     onChange={handleInputChange}
                     required
                   >
-                    {statusOptions.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
+                    {statusOptions
+                      .filter(status => editingTender || status !== 'Завершен')
+                      .map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
                   </select>
                 </div>
 
@@ -1000,6 +1179,169 @@ function TendersPage() {
                     </div>
                   </>
                 )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Модальное окно выбора победителя */}
+      {showWinnerModal && tenderForWinnerSelection && (() => {
+        const tenderCps = tenderCounterparties[tenderForWinnerSelection.id] || []
+
+        return (
+          <div className="modal-overlay" onClick={() => {
+            setShowWinnerModal(false)
+            setTenderForWinnerSelection(null)
+            setSelectedWinnerId(null)
+          }}>
+            <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+              <div className="modal-header">
+                <h3>Выбор победителя тендера</h3>
+                <button
+                  className="modal-close"
+                  onClick={() => {
+                    setShowWinnerModal(false)
+                    setTenderForWinnerSelection(null)
+                    setSelectedWinnerId(null)
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div style={{ padding: '1.5rem' }}>
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                    <strong>Объект:</strong> {tenderForWinnerSelection.objects?.name || '-'}
+                  </p>
+                  <p style={{ color: 'var(--text-secondary)' }}>
+                    <strong>Описание работ:</strong> {tenderForWinnerSelection.work_description}
+                  </p>
+                </div>
+
+                {tenderCps.length === 0 ? (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '2rem',
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'var(--bg-tertiary)',
+                    borderRadius: '8px'
+                  }}>
+                    <p style={{ marginBottom: '1rem' }}>К этому тендеру не добавлены контрагенты.</p>
+                    <p>Вы можете завершить тендер без победителя или сначала добавить контрагентов.</p>
+                  </div>
+                ) : (
+                  <>
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontWeight: '500' }}>
+                      Выберите победителя тендера:
+                    </p>
+                    <div style={{
+                      maxHeight: '300px',
+                      overflowY: 'auto',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px'
+                    }}>
+                      {tenderCps.map((tc) => (
+                        <div
+                          key={tc.id}
+                          onClick={() => setSelectedWinnerId(tc.counterparty_id)}
+                          style={{
+                            padding: '1rem',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid var(--border-color)',
+                            backgroundColor: selectedWinnerId === tc.counterparty_id ? 'var(--primary-color)' : 'transparent',
+                            color: selectedWinnerId === tc.counterparty_id ? 'white' : 'var(--text-primary)',
+                            transition: 'all 0.2s',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '1rem'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (selectedWinnerId !== tc.counterparty_id) {
+                              e.currentTarget.style.backgroundColor = 'var(--hover-bg)'
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (selectedWinnerId !== tc.counterparty_id) {
+                              e.currentTarget.style.backgroundColor = 'transparent'
+                            }
+                          }}
+                        >
+                          <div style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '50%',
+                            border: selectedWinnerId === tc.counterparty_id ? '2px solid white' : '2px solid var(--border-color)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0
+                          }}>
+                            {selectedWinnerId === tc.counterparty_id && (
+                              <div style={{
+                                width: '12px',
+                                height: '12px',
+                                borderRadius: '50%',
+                                backgroundColor: 'white'
+                              }} />
+                            )}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: '600', marginBottom: '0.25rem' }}>
+                              {tc.counterparties?.name}
+                            </div>
+                            {tc.counterparties?.work_type && (
+                              <div style={{
+                                fontSize: '0.875rem',
+                                opacity: selectedWinnerId === tc.counterparty_id ? 0.9 : 0.7
+                              }}>
+                                {tc.counterparties.work_type}
+                              </div>
+                            )}
+                            <div style={{
+                              fontSize: '0.75rem',
+                              marginTop: '0.25rem',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '4px',
+                              display: 'inline-block',
+                              backgroundColor: selectedWinnerId === tc.counterparty_id ? 'rgba(255,255,255,0.2)' : 'var(--bg-tertiary)',
+                              color: selectedWinnerId === tc.counterparty_id ? 'white' : getCounterpartyStatusColor(tc.status)
+                            }}>
+                              {getCounterpartyStatusLabel(tc.status || 'request_sent')}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '1rem',
+                  marginTop: '1.5rem',
+                  paddingTop: '1.5rem',
+                  borderTop: '1px solid var(--border-color)'
+                }}>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      setShowWinnerModal(false)
+                      setTenderForWinnerSelection(null)
+                      setSelectedWinnerId(null)
+                    }}
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={handleConfirmWinner}
+                  >
+                    {selectedWinnerId ? 'Завершить с победителем' : 'Завершить без победителя'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -1,13 +1,14 @@
 .sidebar {
   width: 280px;
-  background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
   color: white;
   display: flex;
   flex-direction: column;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
   height: 100vh;
   position: sticky;
   top: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .sidebar-header {
@@ -63,9 +64,9 @@
 }
 
 .sidebar-item.active {
-  background: rgba(255, 255, 255, 0.15);
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.15) 0%, rgba(34, 211, 238, 0.05) 100%);
   color: white;
-  border-left-color: #60a5fa;
+  border-left-color: #22d3ee;
   font-weight: 600;
 }
 
@@ -85,9 +86,10 @@
 }
 
 .sidebar-submenu {
-  background: rgba(0, 0, 0, 0.15);
-  border-left: 2px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+  border-left: 2px solid rgba(34, 211, 238, 0.3);
   margin-left: 1.5rem;
+  border-radius: 0 8px 8px 0;
 }
 
 .sidebar-subitem {
@@ -113,10 +115,59 @@
 }
 
 .sidebar-subitem.active {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border-left-color: #93c5fd;
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.2) 0%, rgba(34, 211, 238, 0.05) 100%);
+  color: #22d3ee;
+  border-left-color: #22d3ee;
   font-weight: 600;
+}
+
+/* Nested submenu for contracts departments */
+.sidebar-nested-wrapper {
+  width: 100%;
+}
+
+.sidebar-subitem-parent {
+  position: relative;
+}
+
+.sidebar-nested-submenu {
+  background: rgba(0, 0, 0, 0.25);
+  border-left: 2px solid rgba(34, 211, 238, 0.2);
+  margin-left: 1rem;
+  border-radius: 0 6px 6px 0;
+}
+
+.sidebar-nested-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  border-left: 2px solid transparent;
+  text-decoration: none;
+}
+
+.sidebar-nested-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.sidebar-nested-item.active {
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.25) 0%, rgba(34, 211, 238, 0.05) 100%);
+  color: #22d3ee;
+  border-left-color: #22d3ee;
+  font-weight: 600;
+}
+
+.sidebar-nested-item .sidebar-icon {
+  font-size: 1rem;
 }
 
 .sidebar-icon {
@@ -162,7 +213,7 @@
 
   .sidebar-item.active {
     border-left: none;
-    border-bottom-color: #60a5fa;
+    border-bottom-color: #22d3ee;
   }
 
   .sidebar-icon {

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS tenders (
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   tender_package_link TEXT,
+  winner_counterparty_id UUID REFERENCES counterparties(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   CONSTRAINT check_dates CHECK (end_date >= start_date)
@@ -17,6 +18,7 @@ CREATE INDEX IF NOT EXISTS idx_tenders_object_id ON tenders(object_id);
 CREATE INDEX IF NOT EXISTS idx_tenders_status ON tenders(status);
 CREATE INDEX IF NOT EXISTS idx_tenders_start_date ON tenders(start_date);
 CREATE INDEX IF NOT EXISTS idx_tenders_end_date ON tenders(end_date);
+CREATE INDEX IF NOT EXISTS idx_tenders_winner_counterparty_id ON tenders(winner_counterparty_id);
 
 -- Триггер для автоматического обновления updated_at
 CREATE OR REPLACE FUNCTION update_tenders_updated_at()
@@ -57,5 +59,6 @@ COMMENT ON COLUMN tenders.status IS 'Статус тендера (Не нача�
 COMMENT ON COLUMN tenders.start_date IS 'Дата начала тендерной процедуры';
 COMMENT ON COLUMN tenders.end_date IS 'Дата окончания тендерной процедуры';
 COMMENT ON COLUMN tenders.tender_package_link IS 'Ссылка на тендерный пакет';
+COMMENT ON COLUMN tenders.winner_counterparty_id IS 'Контрагент-победитель тендера';
 COMMENT ON COLUMN tenders.created_at IS 'Дата и время создания записи';
 COMMENT ON COLUMN tenders.updated_at IS 'Дата и время последнего обновления записи';

@@ -23,7 +23,8 @@
       "Bash(npm run dev:*)",
       "Bash(cat:*)",
       "Bash(supabase:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(npx supabase db push:*)"
     ],
     "deny": [],
     "ask": []

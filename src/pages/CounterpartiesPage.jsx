@@ -750,7 +750,7 @@ function CounterpartiesPage() {
                 onClick={handleBulkDelete}
                 style={{
                   marginLeft: 'auto',
-                  backgroundColor: '#dc2626',
+                  backgroundColor: '#b91c1c',
                   color: 'white',
                   padding: '0.5rem 1rem',
                   borderRadius: '6px',
@@ -882,13 +882,12 @@ function CounterpartiesPage() {
                             padding: '0.4rem 0.75rem',
                             fontSize: '0.875rem',
                             fontWeight: '500',
-                            border: '2px solid',
-                            borderColor: counterparty.status === 'blacklist' ? '#dc2626' : '#16a34a',
+                            border: '1px solid',
+                            borderColor: counterparty.status === 'blacklist' ? '#fca5a5' : '#86efac',
                             borderRadius: '6px',
-                            backgroundColor: counterparty.status === 'blacklist' ? '#fee2e2' : '#d1fae5',
-                            color: counterparty.status === 'blacklist' ? '#991b1b' : '#065f46',
+                            backgroundColor: counterparty.status === 'blacklist' ? '#fef2f2' : '#f0fdf4',
+                            color: counterparty.status === 'blacklist' ? '#b91c1c' : '#166534',
                             cursor: 'pointer',
-                            fontWeight: '600',
                             transition: 'all 0.2s ease'
                           }}
                         >
@@ -1522,7 +1521,7 @@ function CounterpartiesPage() {
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                       <td style={{ padding: '0.5rem', color: 'var(--text-secondary)' }}>Наименование организации</td>
                       <td style={{ padding: '0.5rem' }}>
-                        <span style={{ color: '#dc2626', fontWeight: '600' }}>Да</span>
+                        <span style={{ color: '#b91c1c', fontWeight: '600' }}>Да</span>
                       </td>
                       <td style={{ padding: '0.5rem', color: 'var(--text-tertiary)', fontSize: '0.8125rem' }}>ООО "Стройком"</td>
                     </tr>
@@ -1591,16 +1590,16 @@ function CounterpartiesPage() {
               </div>
 
               <div style={{
-                backgroundColor: '#dbeafe',
-                border: '1px solid #3b82f6',
+                backgroundColor: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
                 padding: '1rem',
                 borderRadius: '6px',
                 marginBottom: '1.5rem'
               }}>
-                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   💡 Важные замечания
                 </h4>
-                <ul style={{ margin: '0', paddingLeft: '1.5rem', fontSize: '0.875rem', color: '#1e3a8a' }}>
+                <ul style={{ margin: '0', paddingLeft: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                   <li style={{ marginBottom: '0.25rem' }}>Названия столбцов должны точно совпадать с указанными выше</li>
                   <li style={{ marginBottom: '0.25rem' }}>Первая строка файла должна содержать заголовки столбцов</li>
                   <li style={{ marginBottom: '0.25rem' }}>Чтобы добавить несколько контактов для одного контрагента, укажите контрагента в нескольких строках с одинаковым названием и ИНН</li>

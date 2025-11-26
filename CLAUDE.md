@@ -81,6 +81,7 @@ npm run lint
     - `counterparty_contacts.sql` - Counterparty contact persons
     - `contracts.sql` - Contracts table
     - `tenders.sql` - Tenders table
+    - `tender_counterparties.sql` - Tender-counterparty relationships with status tracking
   - `migrations/` - Database migrations (chronological schema changes)
   - `exports/` - JSON exports of tables, functions, triggers, indexes, enums
 
@@ -103,6 +104,11 @@ npm run lint
 - **tenders** - Tender management with status tracking and date constraints
   - Links to `objects` via `object_id` with `ON DELETE SET NULL`
   - Includes `tender_package_link` for document storage
+- **tender_counterparties** - Many-to-many relationship between tenders and counterparties
+  - Links `tenders` and `counterparties` with `ON DELETE CASCADE`
+  - `status` ENUM: `'request_sent'`, `'declined'`, or `'proposal_provided'`
+  - Tracks invited counterparties with `invited_at` timestamp and `notes`
+  - Unique constraint on `(tender_id, counterparty_id)`
 - All tables use UUID primary keys and include `created_at`/`updated_at` timestamps
 - Row Level Security (RLS) enabled on all tables with policies for authenticated users
 - Automatic `updated_at` triggers on all tables via table-specific trigger functions
@@ -110,9 +116,14 @@ npm run lint
 **Data Fetching Patterns:**
 - Use Supabase's `.select()` with relationship syntax for joins: `.select('*, objects(name), counterparties(name)')`
 - This returns nested objects (e.g., `contract.counterparties.name`) instead of flat joins
+- For deep nested relationships, chain the syntax:
+  ```javascript
+  .select(`*, counterparties(id, name, work_type, counterparty_contacts(full_name, phone, email))`)
+  ```
 - Standard CRUD operations: `.insert()`, `.update()`, `.delete()`, `.select()`
 - Use `.order()` for sorting results
 - Filter with `.eq()`, `.neq()`, `.in()`, etc.
+- For many-to-many inserts, use array of objects: `.insert([{tender_id, counterparty_id}, ...])`
 
 **MCP (Model Context Protocol) Integration:**
 - MCP server configured in `.mcp/config.json`
@@ -172,21 +183,23 @@ src/
 ├── index.css             # Global styles and CSS variables
 ├── assets/               # Static assets bundled by Vite
 ├── components/           # Reusable components
-│   ├── Sidebar.jsx       # Navigation sidebar
+│   ├── Sidebar.jsx       # Navigation sidebar with collapsible sections
 │   ├── ThemeToggle.jsx   # Theme switcher
 │   ├── Layout.jsx        # Layout wrapper
 │   ├── ContractRegistry.jsx
-│   └── GeneralInfo.jsx
+│   ├── GeneralInfo.jsx
+│   └── Tenders.css       # Tenders page styles
 ├── contexts/             # React contexts
 │   └── ThemeContext.jsx  # Theme state management
-├── pages/                # Page components
+├── pages/                # Page components (each handles CRUD for its entity)
 │   ├── ObjectsPage.jsx
 │   ├── ContactsPage.jsx
 │   ├── CounterpartiesPage.jsx
-│   ├── TendersPage.jsx
+│   ├── TendersPage.jsx   # Includes tender-counterparty management
 │   ├── ContractsPage.jsx
 │   ├── AcceptancePage.jsx
-│   └── ReportsPage.jsx
+│   ├── ReportsPage.jsx
+│   └── GeneralInfoPage.jsx
 └── supabase/             # Supabase configuration
     ├── client.js         # Supabase client initialization
     ├── hooks.js          # React hooks (useSupabase)

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS contracts (
   work_start_date DATE,
   work_end_date DATE,
   warranty_period VARCHAR(100),
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -21,6 +22,7 @@ CREATE INDEX IF NOT EXISTS idx_contracts_counterparty_id ON contracts(counterpar
 CREATE INDEX IF NOT EXISTS idx_contracts_object_id ON contracts(object_id);
 CREATE INDEX IF NOT EXISTS idx_contracts_contract_date ON contracts(contract_date);
 CREATE INDEX IF NOT EXISTS idx_contracts_work_dates ON contracts(work_start_date, work_end_date);
+CREATE INDEX IF NOT EXISTS idx_contracts_status ON contracts(status);
 
 -- Триггер для автоматического обновления updated_at
 CREATE OR REPLACE FUNCTION update_contracts_updated_at()
