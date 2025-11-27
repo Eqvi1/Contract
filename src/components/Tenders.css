@@ -175,14 +175,25 @@
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
   color: white;
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, var(--primary-hover) 0%, #0a7487 100%);
+  background: linear-gradient(135deg, #0e7490 0%, #0a7487 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 6px rgba(8, 145, 178, 0.25);
+}
+
+/* Dark theme для основной кнопки */
+[data-theme='dark'] .btn-primary {
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+  color: white;
+}
+
+[data-theme='dark'] .btn-primary:hover {
+  background: linear-gradient(135deg, #0e7490 0%, #0a7487 100%);
+  box-shadow: 0 4px 6px rgba(8, 145, 178, 0.35);
 }
 
 .btn-secondary {

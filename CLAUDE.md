@@ -58,6 +58,11 @@ npm run lint
 
 - **react-router-dom** v7 - Client-side routing
 - **xlsx** - Excel file import/export functionality (SheetJS)
+  - Used in `TenderDetailPage.jsx` and `ContractorProposalsPage.jsx`
+  - Import estimates from Excel: `XLSX.read()` → `sheet_to_json()`
+  - Export templates: `aoa_to_sheet()` → `book_new()` → `writeFile()`
+  - Template columns for estimates: № п/п, КОД, Вид затрат, Наименование затрат, Примечание к расчету, Ед. изм., Объем, Расход
+  - Proposal templates add pricing columns: Цена материалы, Цена СМР/ПНР, ИТОГО, Стоимость, Примечание участника
 
 ### Backend & Database
 
@@ -82,6 +87,7 @@ npm run lint
     - `contracts.sql` - Contracts table
     - `tenders.sql` - Tenders table
     - `tender_counterparties.sql` - Tender-counterparty relationships with status tracking
+    - `tender_estimates.sql` - Estimate items, counterparty proposals, and proposal files
   - `migrations/` - Database migrations (chronological schema changes)
   - `exports/` - JSON exports of tables, functions, triggers, indexes, enums
 
@@ -103,12 +109,22 @@ npm run lint
   - Both foreign keys use `ON DELETE SET NULL` to preserve historical data
 - **tenders** - Tender management with status tracking and date constraints
   - Links to `objects` via `object_id` with `ON DELETE SET NULL`
-  - Includes `tender_package_link` for document storage
+  - Includes `tender_package_link` for document storage and `winner_counterparty_id` for winner selection
 - **tender_counterparties** - Many-to-many relationship between tenders and counterparties
   - Links `tenders` and `counterparties` with `ON DELETE CASCADE`
   - `status` ENUM: `'request_sent'`, `'declined'`, or `'proposal_provided'`
   - Tracks invited counterparties with `invited_at` timestamp and `notes`
   - Unique constraint on `(tender_id, counterparty_id)`
+- **tender_estimate_items** - Estimate line items for tenders (schema: `tender_estimates.sql`)
+  - Linked to tender via `tender_id` with `ON DELETE CASCADE`
+  - Fields: `row_number`, `code`, `cost_type`, `cost_name`, `calculation_note`, `unit`, `work_volume`, `material_consumption`
+  - Unique constraint on `(tender_id, row_number)`
+- **tender_counterparty_proposals** - Contractor price proposals for estimate items
+  - Links estimate items to counterparty pricing
+  - Fields: `unit_price_materials`, `unit_price_works`, `total_unit_price`, `total_materials`, `total_works`, `total_cost`, `participant_note`
+  - Unique constraint on `(estimate_item_id, counterparty_id)`
+- **tender_proposal_files** - Uploaded Excel files with contractor proposals
+  - Tracks `file_name`, `file_url`, `file_size`, `uploaded_at`
 - All tables use UUID primary keys and include `created_at`/`updated_at` timestamps
 - Row Level Security (RLS) enabled on all tables with policies for authenticated users
 - Automatic `updated_at` triggers on all tables via table-specific trigger functions
@@ -124,6 +140,7 @@ npm run lint
 - Use `.order()` for sorting results
 - Filter with `.eq()`, `.neq()`, `.in()`, etc.
 - For many-to-many inserts, use array of objects: `.insert([{tender_id, counterparty_id}, ...])`
+- For winner relationship in tenders: `.select('*, winner:counterparties!winner_counterparty_id(id, name)')`
 
 **MCP (Model Context Protocol) Integration:**
 - MCP server configured in `.mcp/config.json`
@@ -135,21 +152,39 @@ npm run lint
 
 ### Application Architecture
 
+**Role-Based Access:**
+- Two user roles: `employee` (СУ-10 staff) and `contractor` (external contractors)
+- Role context in `src/contexts/RoleContext.jsx`
+- Use `useRole()` hook to access: `isEmployee`, `isContractor`, `contractorInfo`, `logout`
+- Roles persisted in localStorage (`userRole`, `contractorInfo` keys)
+- Employees see full sidebar navigation; contractors see only their proposals page
+
 **Routing:**
 - **React Router v7** for client-side routing
-- Routes defined in `src/App.jsx`
+- Routes defined in `src/App.jsx` with role-based protection
+- `EmployeeLayout` - Protected routes for employees with full sidebar
+- `AuthRoutes` - Handles login and role-based redirects
 - Navigation structure:
-  - **General Information** (collapsible sidebar section):
-    - `/general/objects` - Construction objects management (default route)
-    - `/general/contacts` - Contact persons management
-    - `/general/counterparties` - Contractor directory
-  - `/tenders` - Tenders management
-  - `/contracts` - Contract registry
-  - `/acceptance` - Work acceptance
-  - `/reports` - Reports and analytics
-- Sidebar navigation with `NavLink` for active state highlighting
-- Root path `/` redirects to `/general/objects`
-- The "General Information" section in the sidebar is collapsible with expand/collapse state
+  - `/login` - Role selection page
+  - **Contractor portal:**
+    - `/contractor/proposals` - Contractor's tender proposals (contractors only)
+  - **Employee routes (sidebar navigation):**
+    - **General Information** (collapsible):
+      - `/general/objects` - Construction objects (default for employees)
+      - `/general/contacts` - Contact persons
+      - `/general/counterparties` - Contractor directory
+    - **Tenders** (collapsible, by department):
+      - `/tenders/construction` - Main construction tenders
+      - `/tenders/warranty` - Warranty department tenders
+      - `/tenders/:tenderId` - Tender detail page with estimates
+    - **Contracts** (collapsible, nested by department and status):
+      - `/contracts/construction/pending` - Pending construction contracts
+      - `/contracts/construction/signed` - Signed construction contracts
+      - `/contracts/warranty/pending` - Pending warranty contracts
+      - `/contracts/warranty/signed` - Signed warranty contracts
+    - `/acceptance` - Work acceptance
+    - `/reports` - Reports and analytics
+- Sidebar uses nested collapsible sections with `useState` for expand/collapse
 
 **Theming System:**
 - Custom theme context in `src/contexts/ThemeContext.jsx`
@@ -161,15 +196,20 @@ npm run lint
 
 **Component Structure:**
 - `Layout.jsx` - Main layout wrapper
-- `Sidebar.jsx` - Left navigation sidebar with collapsible sections and theme toggle
-  - Uses `useState` to manage collapsed/expanded state of "General Information" section
+- `Sidebar.jsx` - Left navigation sidebar with nested collapsible sections and theme toggle
+  - Uses multiple `useState` hooks for section expand/collapse states
   - Persists expanded state based on current route
 - Page components in `src/pages/`:
+  - `LoginPage.jsx` - Role selection (employee/contractor)
   - `ObjectsPage.jsx` - Construction objects management
   - `ContactsPage.jsx` - Contact persons management
   - `CounterpartiesPage.jsx` - Contractor directory
-  - `TendersPage.jsx` - Tender management
-  - `ContractsPage.jsx` - Contract registry
+  - `TendersPage.jsx` - Tender list with `department` prop ('construction' | 'warranty')
+  - `TenderDetailPage.jsx` - Detailed tender view with estimates, proposals comparison, and participants
+    - Tabs: Смета (estimates), Сравнение КП (proposal comparison), Участники (participants)
+    - Excel import/export for estimates and proposal templates (uses xlsx library)
+  - `ContractsPage.jsx` - Contract registry with `department` and `status` props
+  - `ContractorProposalsPage.jsx` - Contractor portal for viewing/submitting tender proposals
   - `AcceptancePage.jsx` - Work acceptance
   - `ReportsPage.jsx` - Reports
 
@@ -178,28 +218,29 @@ npm run lint
 ```
 src/
 ├── main.jsx              # Application entry point
-├── App.jsx               # Root component with router and theme provider
+├── App.jsx               # Root component with router, theme, and role providers
 ├── App.css               # App-level styles
 ├── index.css             # Global styles and CSS variables
 ├── assets/               # Static assets bundled by Vite
 ├── components/           # Reusable components
-│   ├── Sidebar.jsx       # Navigation sidebar with collapsible sections
+│   ├── Sidebar.jsx       # Navigation sidebar with nested collapsible sections
 │   ├── ThemeToggle.jsx   # Theme switcher
 │   ├── Layout.jsx        # Layout wrapper
-│   ├── ContractRegistry.jsx
-│   ├── GeneralInfo.jsx
-│   └── Tenders.css       # Tenders page styles
+│   └── TenderDetail.css  # Tender detail page styles
 ├── contexts/             # React contexts
-│   └── ThemeContext.jsx  # Theme state management
+│   ├── ThemeContext.jsx  # Theme state management
+│   └── RoleContext.jsx   # User role management (employee/contractor)
 ├── pages/                # Page components (each handles CRUD for its entity)
+│   ├── LoginPage.jsx     # Role selection page
 │   ├── ObjectsPage.jsx
 │   ├── ContactsPage.jsx
 │   ├── CounterpartiesPage.jsx
-│   ├── TendersPage.jsx   # Includes tender-counterparty management
+│   ├── TendersPage.jsx   # Tender list with department filtering
+│   ├── TenderDetailPage.jsx  # Tender estimates and proposal comparison
 │   ├── ContractsPage.jsx
+│   ├── ContractorProposalsPage.jsx  # Contractor portal
 │   ├── AcceptancePage.jsx
-│   ├── ReportsPage.jsx
-│   └── GeneralInfoPage.jsx
+│   └── ReportsPage.jsx
 └── supabase/             # Supabase configuration
     ├── client.js         # Supabase client initialization
     ├── hooks.js          # React hooks (useSupabase)
@@ -208,16 +249,15 @@ src/
 supabase/                 # Database schema and configuration
 ├── schemas/
 │   ├── prod.sql          # Full production schema
-│   ├── contracts.sql     # Contracts table schema
-│   ├── tenders.sql       # Tenders table schema
-│   └── general_info.sql  # General info schema
+│   ├── general_info.sql  # Objects and contacts tables
+│   ├── counterparties.sql
+│   ├── counterparty_contacts.sql
+│   ├── contracts.sql
+│   ├── tenders.sql
+│   ├── tender_counterparties.sql
+│   └── tender_estimates.sql  # Estimate items, proposals, proposal files
 ├── migrations/           # Database migrations
 └── exports/              # Database structure exports
-    ├── tables.json
-    ├── functions.json
-    ├── triggers.json
-    ├── indexes.json
-    └── enums.json
 
 .mcp/                     # Model Context Protocol configuration
 ├── config.json           # MCP server settings

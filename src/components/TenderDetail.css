@@ -490,7 +490,7 @@
 }
 
 .btn-upload-small {
-  background: var(--primary-color);
+  background: #0891b2;
   color: white;
   border: none;
   padding: 0.25rem 0.5rem;
@@ -501,7 +501,7 @@
 }
 
 .btn-upload-small:hover {
-  opacity: 0.9;
+  background: #0e7490;
 }
 
 .sub-header {
@@ -803,7 +803,7 @@
 
 /* Buttons */
 .btn-primary {
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
   color: white;
   border: none;
   padding: 0.625rem 1.25rem;
@@ -815,8 +815,20 @@
 }
 
 .btn-primary:hover {
+  background: linear-gradient(135deg, #0e7490 0%, #0a7487 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(8, 145, 178, 0.3);
+}
+
+/* Dark theme для основной кнопки */
+[data-theme='dark'] .btn-primary {
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+  color: white;
+}
+
+[data-theme='dark'] .btn-primary:hover {
+  background: linear-gradient(135deg, #0e7490 0%, #0a7487 100%);
+  box-shadow: 0 4px 12px rgba(8, 145, 178, 0.35);
 }
 
 .btn-secondary {
