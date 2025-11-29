@@ -24,10 +24,18 @@ function Sidebar() {
   const [contractsWarrantyExpanded, setContractsWarrantyExpanded] = useState(
     location.pathname.startsWith('/contracts/warranty')
   )
+  const [bsmExpanded, setBsmExpanded] = useState(
+    location.pathname.startsWith('/bsm')
+  )
 
   const menuItems = [
     { path: '/acceptance', label: 'Приёмка работ', icon: '✓' },
     { path: '/reports', label: 'Отчёты', icon: '📊' },
+  ]
+
+  const bsmSubItems = [
+    { path: '/bsm/analysis', label: 'Анализ материалов', icon: '📊' },
+    { path: '/bsm/rates', label: 'Согласованные расценки', icon: '💰' },
   ]
 
   const generalInfoSubItems = [
@@ -56,6 +64,7 @@ function Sidebar() {
   const isContractsActive = location.pathname.startsWith('/contracts')
   const isContractsConstructionActive = location.pathname.startsWith('/contracts/construction')
   const isContractsWarrantyActive = location.pathname.startsWith('/contracts/warranty')
+  const isBsmActive = location.pathname.startsWith('/bsm')
 
   return (
     <aside className="sidebar">
@@ -203,6 +212,37 @@ function Sidebar() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Collapsible BSM Section */}
+        <div className="sidebar-item-wrapper">
+          <button
+            className={`sidebar-item sidebar-item-parent ${isBsmActive ? 'active' : ''}`}
+            onClick={() => setBsmExpanded(!bsmExpanded)}
+          >
+            <span className="sidebar-icon">📦</span>
+            <span className="sidebar-label">БСМ и материалы</span>
+            <span className={`sidebar-chevron ${bsmExpanded ? 'expanded' : ''}`}>
+              ›
+            </span>
+          </button>
+
+          {bsmExpanded && (
+            <div className="sidebar-submenu">
+              {bsmSubItems.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={({ isActive }) =>
+                    `sidebar-subitem ${isActive ? 'active' : ''}`
+                  }
+                >
+                  <span className="sidebar-icon">{item.icon}</span>
+                  <span className="sidebar-label">{item.label}</span>
+                </NavLink>
+              ))}
             </div>
           )}
         </div>

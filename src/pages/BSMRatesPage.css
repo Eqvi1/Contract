@@ -1,0 +1,483 @@
+.bsm-rates-page {
+  padding: 20px;
+}
+
+.bsm-rates-page h1 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+}
+
+.page-description {
+  color: var(--text-secondary);
+  margin: 0 0 24px 0;
+}
+
+.object-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.object-selector label {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.object-selector select {
+  padding: 10px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  min-width: 300px;
+}
+
+.rates-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-right {
+  display: flex;
+  gap: 8px;
+}
+
+.search-input {
+  padding: 8px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  width: 250px;
+}
+
+.rates-count {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.btn-add, .btn-import, .btn-export {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-add {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+}
+
+.btn-add:hover {
+  background: var(--primary-hover);
+}
+
+.btn-import {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  display: inline-block;
+}
+
+.btn-import:hover {
+  background: var(--bg-tertiary);
+}
+
+.btn-export {
+  background: #10b981;
+  color: white;
+  border: none;
+}
+
+.btn-export:hover {
+  background: #059669;
+}
+
+.btn-export:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+.add-form {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.add-form h3 {
+  margin: 0 0 12px 0;
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.form-row input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.form-row input:first-child {
+  flex: 2;
+  min-width: 200px;
+}
+
+.form-row input:nth-child(2) {
+  width: 100px;
+}
+
+.form-row input:nth-child(3) {
+  width: 120px;
+}
+
+.btn-save, .btn-cancel {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-save {
+  background: var(--primary-color);
+  color: white;
+}
+
+.btn-cancel {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px dashed var(--border-color);
+}
+
+.table-container {
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.rates-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.rates-table th,
+.rates-table td {
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.rates-table th {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rates-table td {
+  color: var(--text-primary);
+}
+
+.rates-table tbody tr:hover {
+  background: var(--bg-secondary);
+}
+
+.rates-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.col-num {
+  width: 50px;
+  text-align: center;
+}
+
+.col-name {
+  min-width: 300px;
+}
+
+.col-unit {
+  width: 100px;
+  text-align: center;
+}
+
+.col-price {
+  width: 150px;
+  text-align: right;
+  font-family: monospace;
+}
+
+.col-actions {
+  width: 100px;
+  text-align: center;
+}
+
+.col-actions button {
+  padding: 4px 8px;
+  margin: 0 2px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-edit {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.btn-edit:hover {
+  background: var(--primary-color);
+  color: white;
+}
+
+.btn-delete {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.btn-delete:hover {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-done {
+  background: #10b981;
+  color: white;
+}
+
+.rates-table input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--primary-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.rates-table input[type="number"] {
+  text-align: right;
+}
+
+/* Кнопка помощи */
+.btn-help {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-help:hover {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+/* Блок инструкции по импорту */
+.import-help {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.import-help-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.import-help-header h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.btn-close {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.btn-close:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.import-help-content {
+  padding: 16px;
+}
+
+.import-help-content > p {
+  margin: 0 0 12px 0;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+/* Таблица формата */
+.format-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.format-table th,
+.format-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--border-color);
+}
+
+.format-table th {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.format-table td {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.format-table tr:first-child td {
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.format-table .example-row td {
+  font-family: monospace;
+  font-weight: normal;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+/* Примечания к импорту */
+.import-notes {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px 16px;
+}
+
+.import-notes > p {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.import-notes ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.import-notes li {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Чекбоксы для выбора */
+.col-checkbox {
+  width: 40px;
+  text-align: center;
+}
+
+.col-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.selected-row {
+  background: rgba(59, 130, 246, 0.1) !important;
+}
+
+.selected-row:hover {
+  background: rgba(59, 130, 246, 0.15) !important;
+}
+
+/* Кнопка удаления выбранных */
+.btn-delete-selected {
+  padding: 6px 12px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-delete-selected:hover {
+  background: #dc2626;
+}
