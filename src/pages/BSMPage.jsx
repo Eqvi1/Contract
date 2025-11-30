@@ -8,7 +8,7 @@ function BSMPage() {
   const [fileName, setFileName] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [stats, setStats] = useState(null)
-  const [activeTab, setActiveTab] = useState('all') // 'all', 'zero', 'different', 'units', 'compare'
+  const [activeTab, setActiveTab] = useState('all') // 'all', 'zero', 'different', 'units', 'compare', 'not_in_supply'
   const [expandedItems, setExpandedItems] = useState({}) // для раскрытия деталей
   const [groupedDifferentPrices, setGroupedDifferentPrices] = useState([]) // сгруппированные материалы с разными ценами
   const [differentUnitsData, setDifferentUnitsData] = useState([]) // материалы с разными ед. изм.
@@ -57,7 +57,7 @@ function BSMPage() {
 
   const fetchApprovedRates = async () => {
     const { data, error } = await supabase
-      .from('bsm_approved_rates')
+      .from('bsm_supply_rates')
       .select('*')
       .eq('object_id', selectedObjectId)
 
@@ -67,17 +67,18 @@ function BSMPage() {
   }
 
   const calculateComparison = () => {
-    // Создаём карту согласованных расценок по названию материала
+    // Создаём карту расценок от снабжения по названию материала
     const ratesMap = {}
     approvedRates.forEach(rate => {
       const key = rate.material_name.trim().toLowerCase()
-      ratesMap[key] = rate.approved_price
+      ratesMap[key] = rate.supply_price
     })
 
     // Сравниваем каждую позицию
     const comparison = []
-    let totalCurrentSum = 0
-    let totalApprovedSum = 0
+    let totalCurrentSum = 0      // Сумма по файлу (только найденные в снабжении)
+    let totalApprovedSum = 0     // Сумма по снабжению
+    let totalDifference = 0      // Сумма разниц (удешевление/удорожание)
     let matchedCount = 0
     let notFoundCount = 0
     let priceDiffCount = 0
@@ -93,7 +94,12 @@ function BSMPage() {
 
       if (approvedPrice !== undefined) {
         approvedSum = item.totalVolume * approvedPrice
-        difference = currentSum - approvedSum
+        // Разница = снабжение - файл (отрицательное = удешевление)
+        difference = approvedSum - currentSum
+
+        totalCurrentSum += currentSum
+        totalApprovedSum += approvedSum
+        totalDifference += difference
 
         if (Math.abs(item.price - approvedPrice) < 0.01) {
           status = 'match'
@@ -105,9 +111,6 @@ function BSMPage() {
       } else {
         notFoundCount++
       }
-
-      totalCurrentSum += currentSum
-      totalApprovedSum += approvedSum
 
       comparison.push({
         ...item,
@@ -123,7 +126,7 @@ function BSMPage() {
     setComparisonStats({
       totalCurrentSum,
       totalApprovedSum,
-      totalDifference: totalCurrentSum - totalApprovedSum,
+      totalDifference,
       matchedCount,
       priceDiffCount,
       notFoundCount,
@@ -519,7 +522,81 @@ function BSMPage() {
       XLSX.utils.book_append_sheet(wb, wsUnits, 'Разные ед.изм.')
     }
 
-    // 5. Лист "Сводка"
+    // 5. Лист "Нет в снабжении" - позиции отсутствующие в расценках от снабжения
+    const notInSupplyItems = comparisonData.filter(item => item.status === 'not_found')
+    if (notInSupplyItems.length > 0) {
+      const notInSupplySum = notInSupplyItems.reduce((sum, item) => sum + item.currentSum, 0)
+      const notInSupplyHeaders = ['№', 'Наименование материалов', 'Ед. изм.', 'Объем', 'Цена (файл)', 'Сумма (файл)']
+      const notInSupplyRows = notInSupplyItems.map((item, idx) => [
+        idx + 1,
+        item.name,
+        item.unit,
+        item.totalVolume,
+        item.price || '',
+        item.currentSum || ''
+      ])
+
+      // Итоговая строка
+      notInSupplyRows.push(['', '', '', '', 'ИТОГО:', notInSupplySum])
+
+      const wsNotInSupply = XLSX.utils.aoa_to_sheet([
+        ['ПОЗИЦИИ ОТСУТСТВУЮЩИЕ В РАСЦЕНКАХ ОТ СНАБЖЕНИЯ'],
+        ['Объект: ' + (objects.find(o => o.id === selectedObjectId)?.name || 'Не выбран')],
+        ['Обнаружено позиций: ' + notInSupplyItems.length],
+        [],
+        notInSupplyHeaders,
+        ...notInSupplyRows
+      ])
+
+      wsNotInSupply['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }
+      ]
+
+      setColWidths(wsNotInSupply, [5, 50, 10, 15, 18, 18])
+      XLSX.utils.book_append_sheet(wb, wsNotInSupply, 'Нет в снабжении')
+    }
+
+    // 6. Лист "Сравнение с ценами от снабжения"
+    const comparedItems = comparisonData.filter(item => item.status !== 'not_found')
+    if (comparedItems.length > 0 && comparisonStats) {
+      const comparisonHeaders = ['№', 'Наименование материалов', 'Ед. изм.', 'Объем', 'Цена (файл)', 'Цена (снабжение)', 'Сумма (файл)', 'Сумма (снабжение)', 'Удешевление']
+      const comparisonRows = comparedItems.map((item, idx) => [
+        idx + 1,
+        item.name,
+        item.unit,
+        item.totalVolume,
+        item.price || '',
+        item.approvedPrice || '',
+        item.currentSum || '',
+        item.approvedSum || '',
+        item.difference || 0
+      ])
+
+      // Итоговая строка
+      comparisonRows.push(['', '', '', '', '', 'ИТОГО:', comparisonStats.totalCurrentSum, comparisonStats.totalApprovedSum, comparisonStats.totalDifference])
+
+      const wsComparison = XLSX.utils.aoa_to_sheet([
+        ['СРАВНЕНИЕ С ЦЕНАМИ ОТ СНАБЖЕНИЯ'],
+        ['Объект: ' + (objects.find(o => o.id === selectedObjectId)?.name || 'Не выбран')],
+        ['Позиций сравнено: ' + comparedItems.length + ' | Совпадают: ' + comparisonStats.matchedCount + ' | Разные цены: ' + comparisonStats.priceDiffCount],
+        [],
+        comparisonHeaders,
+        ...comparisonRows
+      ])
+
+      wsComparison['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 8 } }
+      ]
+
+      setColWidths(wsComparison, [5, 45, 10, 12, 15, 15, 18, 18, 18])
+      XLSX.utils.book_append_sheet(wb, wsComparison, 'Сравнение с снабжением')
+    }
+
+    // 7. Лист "Сводка"
     const summaryRows = [
       ['СВОДКА ПО АНАЛИЗУ МАТЕРИАЛОВ'],
       [''],
@@ -534,9 +611,18 @@ function BSMPage() {
       ['Позиций без расценки:', stats.zeroPriceCount],
       ['Материалов с разными ценами:', stats.differentPricesCount],
       ['Материалов с разными ед. изм.:', stats.differentUnitsCount],
+      ...(comparisonStats ? [['Позиций нет в снабжении:', comparisonStats.notFoundCount]] : []),
       [''],
       ['ИТОГИ', ''],
-      ['Общая сумма материалов:', totalSum]
+      ['Общая сумма материалов:', totalSum],
+      ...(comparisonStats ? [
+        [''],
+        ['СРАВНЕНИЕ С ЦЕНАМИ ОТ СНАБЖЕНИЯ', ''],
+        ['Объект сравнения:', objects.find(o => o.id === selectedObjectId)?.name || 'Не выбран'],
+        ['Сумма по файлу (найденные):', comparisonStats.totalCurrentSum],
+        ['Сумма от снабжения:', comparisonStats.totalApprovedSum],
+        ['Удешевление:', comparisonStats.totalDifference]
+      ] : [])
     ]
 
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows)
@@ -668,17 +754,105 @@ function BSMPage() {
               className={`tab ${activeTab === 'compare' ? 'active' : ''} ${comparisonStats && comparisonStats.totalDifference !== 0 ? 'compare' : ''}`}
               onClick={() => setActiveTab('compare')}
             >
-              Сравнение с БСМ
+              Сравнение с ценами от снабжения
               {comparisonStats && (
-                <span className={`tab-count ${comparisonStats.totalDifference > 0 ? 'negative' : comparisonStats.totalDifference < 0 ? 'positive' : ''}`}>
-                  {comparisonStats.totalDifference > 0 ? '+' : ''}{formatNumber(comparisonStats.totalDifference)}
+                <span className={`tab-count ${comparisonStats.totalDifference < 0 ? 'positive' : comparisonStats.totalDifference > 0 ? 'negative' : ''}`}>
+                  {formatNumber(comparisonStats.totalDifference)}
                 </span>
+              )}
+            </button>
+            <button
+              className={`tab ${activeTab === 'not_in_supply' ? 'active' : ''} ${comparisonStats && comparisonStats.notFoundCount > 0 ? 'warning' : ''}`}
+              onClick={() => setActiveTab('not_in_supply')}
+            >
+              Нет в снабжении
+              {comparisonStats && (
+                <span className="tab-count">{comparisonStats.notFoundCount}</span>
               )}
             </button>
           </div>
 
-          {activeTab === 'compare' ? (
-            // Вкладка "Сравнение с БСМ"
+          {activeTab === 'not_in_supply' ? (
+            // Вкладка "Нет в снабжении" - позиции не найденные в расценках от снабжения
+            <div className="compare-section">
+              <div className="compare-header">
+                <label>Позиции отсутствующие в расценках объекта:</label>
+                <select
+                  value={selectedObjectId}
+                  onChange={(e) => setSelectedObjectId(e.target.value)}
+                >
+                  <option value="">-- Выберите объект --</option>
+                  {objects.map(obj => (
+                    <option key={obj.id} value={obj.id}>{obj.name}</option>
+                  ))}
+                </select>
+                {selectedObjectId && approvedRates.length === 0 && (
+                  <span className="no-rates-warning">Нет расценок от снабжения для этого объекта</span>
+                )}
+              </div>
+
+              {comparisonStats && comparisonStats.notFoundCount > 0 && (
+                <>
+                  <div className="comparison-summary">
+                    <div className="summary-card warning">
+                      <span className="card-value">{comparisonStats.notFoundCount}</span>
+                      <span className="card-label">Позиций не найдено</span>
+                    </div>
+                    <div className="summary-card">
+                      <span className="card-value">
+                        {formatNumber(comparisonData.filter(item => item.status === 'not_found').reduce((sum, item) => sum + item.currentSum, 0))}
+                      </span>
+                      <span className="card-label">Сумма без расценок</span>
+                    </div>
+                  </div>
+
+                  <div className="table-container">
+                    <table className="pivot-table comparison-table">
+                      <thead>
+                        <tr>
+                          <th>№</th>
+                          <th>Наименование</th>
+                          <th>Ед. изм.</th>
+                          <th>Объем</th>
+                          <th>Цена (файл)</th>
+                          <th>Сумма (файл)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {comparisonData.filter(item => item.status === 'not_found').map((item, idx) => (
+                          <tr key={idx} className="comparison-row status-not_found">
+                            <td>{idx + 1}</td>
+                            <td className="col-name">{item.name}</td>
+                            <td>{item.unit}</td>
+                            <td className="col-volume">{formatNumber(item.totalVolume)}</td>
+                            <td className="col-price">{item.price ? formatNumber(item.price) : '—'}</td>
+                            <td className="col-total">{formatNumber(item.currentSum)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="total-row">
+                          <td colSpan="5" className="total-label">ИТОГО:</td>
+                          <td className="col-total">
+                            {formatNumber(comparisonData.filter(item => item.status === 'not_found').reduce((sum, item) => sum + item.currentSum, 0))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {comparisonStats && comparisonStats.notFoundCount === 0 && (
+                <div className="empty-tab success">Все позиции найдены в расценках от снабжения</div>
+              )}
+
+              {!selectedObjectId && (
+                <div className="empty-tab">Выберите объект для проверки наличия расценок</div>
+              )}
+            </div>
+          ) : activeTab === 'compare' ? (
+            // Вкладка "Сравнение с ценами от снабжения"
             <div className="compare-section">
               <div className="compare-header">
                 <label>Сравнить с расценками объекта:</label>
@@ -692,7 +866,7 @@ function BSMPage() {
                   ))}
                 </select>
                 {selectedObjectId && approvedRates.length === 0 && (
-                  <span className="no-rates-warning">Нет согласованных расценок для этого объекта</span>
+                  <span className="no-rates-warning">Нет расценок от снабжения для этого объекта</span>
                 )}
               </div>
 
@@ -705,13 +879,13 @@ function BSMPage() {
                     </div>
                     <div className="summary-card">
                       <span className="card-value">{formatNumber(comparisonStats.totalApprovedSum)}</span>
-                      <span className="card-label">Сумма по БСМ</span>
+                      <span className="card-label">Сумма от снабжения</span>
                     </div>
-                    <div className={`summary-card ${comparisonStats.totalDifference > 0 ? 'negative' : comparisonStats.totalDifference < 0 ? 'positive' : ''}`}>
+                    <div className={`summary-card ${comparisonStats.totalDifference < 0 ? 'positive' : comparisonStats.totalDifference > 0 ? 'negative' : ''}`}>
                       <span className="card-value">
-                        {comparisonStats.totalDifference > 0 ? '+' : ''}{formatNumber(comparisonStats.totalDifference)}
+                        {formatNumber(comparisonStats.totalDifference)}
                       </span>
-                      <span className="card-label">Разница</span>
+                      <span className="card-label">Удешевление</span>
                     </div>
                     <div className="summary-card success">
                       <span className="card-value">{comparisonStats.matchedCount}</span>
@@ -720,10 +894,6 @@ function BSMPage() {
                     <div className="summary-card warning">
                       <span className="card-value">{comparisonStats.priceDiffCount}</span>
                       <span className="card-label">Разные цены</span>
-                    </div>
-                    <div className="summary-card">
-                      <span className="card-value">{comparisonStats.notFoundCount}</span>
-                      <span className="card-label">Не найдены</span>
                     </div>
                   </div>
 
@@ -736,14 +906,14 @@ function BSMPage() {
                           <th>Ед. изм.</th>
                           <th>Объем</th>
                           <th>Цена (файл)</th>
-                          <th>Цена (БСМ)</th>
+                          <th>Цена (снабжение)</th>
                           <th>Сумма (файл)</th>
-                          <th>Сумма (БСМ)</th>
-                          <th>Разница</th>
+                          <th>Сумма (снабжение)</th>
+                          <th>Удешевление</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {comparisonData.map((item, idx) => (
+                        {comparisonData.filter(item => item.status !== 'not_found').map((item, idx) => (
                           <tr key={idx} className={`comparison-row status-${item.status}`}>
                             <td>{idx + 1}</td>
                             <td className="col-name">{item.name}</td>
@@ -751,14 +921,12 @@ function BSMPage() {
                             <td className="col-volume">{formatNumber(item.totalVolume)}</td>
                             <td className="col-price">{item.price ? formatNumber(item.price) : '—'}</td>
                             <td className="col-price">
-                              {item.approvedPrice !== undefined ? formatNumber(item.approvedPrice) : <span className="not-found">—</span>}
+                              {formatNumber(item.approvedPrice)}
                             </td>
                             <td className="col-total">{formatNumber(item.currentSum)}</td>
                             <td className="col-total">{formatNumber(item.approvedSum)}</td>
-                            <td className={`col-diff ${item.difference > 0 ? 'negative' : item.difference < 0 ? 'positive' : ''}`}>
-                              {item.status === 'not_found' ? '—' : (
-                                <>{item.difference > 0 ? '+' : ''}{formatNumber(item.difference)}</>
-                              )}
+                            <td className={`col-diff ${item.difference < 0 ? 'positive' : item.difference > 0 ? 'negative' : ''}`}>
+                              {formatNumber(item.difference)}
                             </td>
                           </tr>
                         ))}
@@ -768,8 +936,8 @@ function BSMPage() {
                           <td colSpan="6" className="total-label">ИТОГО:</td>
                           <td className="col-total">{formatNumber(comparisonStats.totalCurrentSum)}</td>
                           <td className="col-total">{formatNumber(comparisonStats.totalApprovedSum)}</td>
-                          <td className={`col-diff ${comparisonStats.totalDifference > 0 ? 'negative' : comparisonStats.totalDifference < 0 ? 'positive' : ''}`}>
-                            {comparisonStats.totalDifference > 0 ? '+' : ''}{formatNumber(comparisonStats.totalDifference)}
+                          <td className={`col-diff ${comparisonStats.totalDifference < 0 ? 'positive' : comparisonStats.totalDifference > 0 ? 'negative' : ''}`}>
+                            {formatNumber(comparisonStats.totalDifference)}
                           </td>
                         </tr>
                       </tfoot>
@@ -778,8 +946,12 @@ function BSMPage() {
                 </>
               )}
 
+              {comparisonStats && comparisonStats.matchedCount === 0 && comparisonStats.priceDiffCount === 0 && (
+                <div className="empty-tab">Нет позиций для сравнения (все позиции отсутствуют в снабжении)</div>
+              )}
+
               {!selectedObjectId && (
-                <div className="empty-tab">Выберите объект для сравнения с согласованными расценками БСМ</div>
+                <div className="empty-tab">Выберите объект для сравнения с расценками от снабжения</div>
               )}
             </div>
           ) : activeTab === 'units' ? (
@@ -835,7 +1007,14 @@ function BSMPage() {
               <div className="empty-tab">Нет материалов с разными ценами</div>
             ) : (
               <div className="accordion-list">
-                {groupedDifferentPrices.map((item, idx) => (
+                {groupedDifferentPrices.map((item, idx) => {
+                  // Проверяем наличие расценки от снабжения
+                  const supplyRate = approvedRates.find(rate =>
+                    rate.material_name.trim().toLowerCase() === item.name.trim().toLowerCase()
+                  )
+                  const hasSupplyRate = !!supplyRate
+
+                  return (
                   <div key={idx} className={`accordion-item ${expandedItems[idx] ? 'expanded' : ''}`}>
                     <div
                       className="accordion-header"
@@ -847,6 +1026,11 @@ function BSMPage() {
                       <span className="accordion-num">{idx + 1}</span>
                       <span className="accordion-name">{item.name}</span>
                       <span className="accordion-unit">{item.unit}</span>
+                      {selectedObjectId && (
+                        <span className={`supply-rate-badge ${hasSupplyRate ? 'has-rate' : 'no-rate'}`} title={hasSupplyRate ? `Цена от снабжения: ${formatNumber(supplyRate.supply_price)}` : 'Нет в снабжении'}>
+                          {hasSupplyRate ? `₽ ${formatNumber(supplyRate.supply_price)}` : 'Нет в снабж.'}
+                        </span>
+                      )}
                       <span className="accordion-total">
                         Общий объем: <strong>{formatNumber(item.totalVolume)}</strong>
                       </span>
@@ -879,7 +1063,8 @@ function BSMPage() {
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )
           ) : (

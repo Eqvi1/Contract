@@ -3,24 +3,18 @@ import { supabase } from '../supabase'
 import * as XLSX from 'xlsx'
 import './BSMRatesPage.css'
 
-function BSMRatesPage() {
+function BSMContractRatesPage() {
   const [objects, setObjects] = useState([])
   const [selectedObjectId, setSelectedObjectId] = useState('')
   const [rates, setRates] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [editingRate, setEditingRate] = useState(null)
   const [showAddForm, setShowAddForm] = useState(false)
-  const [newRate, setNewRate] = useState({ material_name: '', unit: '', supply_price: '' })
+  const [newRate, setNewRate] = useState({ material_name: '', unit: '', contract_price: '' })
   const [searchTerm, setSearchTerm] = useState('')
   const [showImportHelp, setShowImportHelp] = useState(false)
   const [selectedRates, setSelectedRates] = useState(new Set())
   const fileInputRef = useRef(null)
-
-  // Состояние для диалога импорта
-  const [showImportReport, setShowImportReport] = useState(false)
-  const [importReport, setImportReport] = useState(null)
-  const [conflictDecisions, setConflictDecisions] = useState({})
-  const [isProcessingImport, setIsProcessingImport] = useState(false)
 
   // Загрузка объектов
   useEffect(() => {
@@ -50,7 +44,7 @@ function BSMRatesPage() {
   const fetchRates = async () => {
     setIsLoading(true)
     const { data, error } = await supabase
-      .from('bsm_supply_rates')
+      .from('bsm_contract_rates')
       .select('*')
       .eq('object_id', selectedObjectId)
       .order('material_name')
@@ -62,18 +56,18 @@ function BSMRatesPage() {
   }
 
   const handleAddRate = async () => {
-    if (!newRate.material_name || !newRate.supply_price) {
+    if (!newRate.material_name || !newRate.contract_price) {
       alert('Заполните наименование материала и цену')
       return
     }
 
     const { error } = await supabase
-      .from('bsm_supply_rates')
+      .from('bsm_contract_rates')
       .insert({
         object_id: selectedObjectId,
         material_name: newRate.material_name.trim(),
         unit: newRate.unit.trim(),
-        supply_price: parseFloat(newRate.supply_price)
+        contract_price: parseFloat(newRate.contract_price)
       })
 
     if (error) {
@@ -83,7 +77,7 @@ function BSMRatesPage() {
         alert('Ошибка при добавлении: ' + error.message)
       }
     } else {
-      setNewRate({ material_name: '', unit: '', supply_price: '' })
+      setNewRate({ material_name: '', unit: '', contract_price: '' })
       setShowAddForm(false)
       fetchRates()
     }
@@ -91,7 +85,7 @@ function BSMRatesPage() {
 
   const handleUpdateRate = async (id, updates) => {
     const { error } = await supabase
-      .from('bsm_supply_rates')
+      .from('bsm_contract_rates')
       .update(updates)
       .eq('id', id)
 
@@ -107,7 +101,7 @@ function BSMRatesPage() {
     if (!confirm('Удалить эту расценку?')) return
 
     const { error } = await supabase
-      .from('bsm_supply_rates')
+      .from('bsm_contract_rates')
       .delete()
       .eq('id', id)
 
@@ -123,7 +117,7 @@ function BSMRatesPage() {
 
     const idsToDelete = Array.from(selectedRates)
     const { error } = await supabase
-      .from('bsm_supply_rates')
+      .from('bsm_contract_rates')
       .delete()
       .in('id', idsToDelete)
 
@@ -157,17 +151,7 @@ function BSMRatesPage() {
     }
   }
 
-  // Парсинг цены из различных форматов
-  const parsePrice = (val) => {
-    if (val === null || val === undefined || val === '') return 0
-    const strVal = String(val)
-      .replace(/\s/g, '')  // убираем все пробелы
-      .replace(/,/g, '.')   // заменяем запятую на точку
-    return parseFloat(strVal) || 0
-  }
-
-  // Шаг 1: Анализ файла и формирование отчёта
-  const handleImportExcel = async (e) => {
+  const handleImportExcel = (e) => {
     const file = e.target.files[0]
     if (!file) return
 
@@ -193,7 +177,7 @@ function BSMRatesPage() {
           }
         }
 
-        // Парсим данные из файла
+        // Парсим данные
         const newRates = []
         for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
           const row = jsonData[i]
@@ -201,6 +185,13 @@ function BSMRatesPage() {
 
           const materialName = String(row[0]).trim()
           const unit = row[1] ? String(row[1]).trim() : ''
+          const parsePrice = (val) => {
+            if (val === null || val === undefined || val === '') return 0
+            const strVal = String(val)
+              .replace(/\s/g, '')
+              .replace(/,/g, '.')
+            return parseFloat(strVal) || 0
+          }
           const price = parsePrice(row[2]) || parsePrice(row[3]) || 0
 
           if (materialName && price > 0) {
@@ -208,7 +199,7 @@ function BSMRatesPage() {
               object_id: selectedObjectId,
               material_name: materialName,
               unit: unit,
-              supply_price: price
+              contract_price: price
             })
           }
         }
@@ -218,71 +209,65 @@ function BSMRatesPage() {
           return
         }
 
-        // Анализируем каждую позицию
-        const newItems = []      // Новые позиции
-        const sameItems = []     // Позиции с той же ценой
-        const conflictItems = [] // Позиции с разной ценой
+        // Импортируем по одному с обработкой дубликатов
+        let importedCount = 0
+        let updatedCount = 0
+        let errors = []
 
         for (const rate of newRates) {
-          const { data: existing, error } = await supabase
-            .from('bsm_supply_rates')
-            .select('id, material_name, unit, supply_price')
+          const { data: existing, error: searchError } = await supabase
+            .from('bsm_contract_rates')
+            .select('id')
             .eq('object_id', rate.object_id)
             .ilike('material_name', rate.material_name)
             .maybeSingle()
 
-          if (error) {
-            console.error('Ошибка поиска:', error)
+          if (searchError) {
+            errors.push(`Поиск: ${searchError.message}`)
             continue
           }
 
-          if (!existing) {
-            // Новая позиция
-            newItems.push(rate)
-          } else {
-            const existingPrice = parseFloat(existing.supply_price) || 0
-            const newPrice = rate.supply_price
+          if (existing) {
+            const { error: updateError } = await supabase
+              .from('bsm_contract_rates')
+              .update({
+                unit: rate.unit,
+                contract_price: rate.contract_price
+              })
+              .eq('id', existing.id)
 
-            if (Math.abs(existingPrice - newPrice) < 0.01) {
-              // Цена совпадает
-              sameItems.push({
-                ...rate,
-                existingId: existing.id,
-                existingPrice
-              })
+            if (updateError) {
+              errors.push(`Обновление: ${updateError.message}`)
             } else {
-              // Цена отличается - конфликт
-              conflictItems.push({
-                ...rate,
-                existingId: existing.id,
-                existingPrice,
-                newPrice,
-                difference: newPrice - existingPrice,
-                percentDiff: existingPrice > 0 ? ((newPrice - existingPrice) / existingPrice * 100) : 0
-              })
+              updatedCount++
+            }
+          } else {
+            const { error: insertError } = await supabase
+              .from('bsm_contract_rates')
+              .insert(rate)
+
+            if (insertError) {
+              errors.push(`Вставка: ${insertError.message}`)
+            } else {
+              importedCount++
             }
           }
         }
 
-        // Формируем отчёт
-        const report = {
-          fileName: file.name,
-          totalParsed: newRates.length,
-          newItems,
-          sameItems,
-          conflictItems
+        const totalProcessed = importedCount + updatedCount
+        if (totalProcessed === 0) {
+          const errorMsg = errors.length > 0
+            ? `Ошибки:\n${errors.slice(0, 3).join('\n')}`
+            : 'Проверьте формат файла.'
+          alert(`Не удалось импортировать данные.\n${errorMsg}`)
+        } else {
+          let message = `Обработано: ${totalProcessed} расценок`
+          if (importedCount > 0) message += `\nДобавлено новых: ${importedCount}`
+          if (updatedCount > 0) message += `\nОбновлено: ${updatedCount}`
+          if (errors.length > 0) message += `\nОшибок: ${errors.length}`
+          alert(message)
+          fetchRates()
         }
-
-        // Инициализируем решения для конфликтов (по умолчанию - оставить старую)
-        const decisions = {}
-        conflictItems.forEach((item, idx) => {
-          decisions[idx] = 'keep' // 'keep' = оставить старую, 'update' = обновить на новую
-        })
-
-        setImportReport(report)
-        setConflictDecisions(decisions)
-        setShowImportReport(true)
-
       } catch (error) {
         console.error('Ошибка при чтении файла:', error)
         alert('Ошибка при чтении файла')
@@ -295,105 +280,6 @@ function BSMRatesPage() {
     reader.readAsBinaryString(file)
   }
 
-  // Шаг 2: Применение импорта после подтверждения
-  const handleConfirmImport = async () => {
-    if (!importReport) return
-
-    setIsProcessingImport(true)
-
-    let importedCount = 0
-    let updatedCount = 0
-    let skippedCount = 0
-    let errors = []
-
-    // 1. Добавляем новые позиции
-    for (const item of importReport.newItems) {
-      const { error } = await supabase
-        .from('bsm_supply_rates')
-        .insert(item)
-
-      if (error) {
-        errors.push(`Добавление "${item.material_name}": ${error.message}`)
-      } else {
-        importedCount++
-      }
-    }
-
-    // 2. Обрабатываем конфликты согласно решениям пользователя
-    for (let idx = 0; idx < importReport.conflictItems.length; idx++) {
-      const item = importReport.conflictItems[idx]
-      const decision = conflictDecisions[idx]
-
-      if (decision === 'update') {
-        const { error } = await supabase
-          .from('bsm_supply_rates')
-          .update({
-            unit: item.unit,
-            supply_price: item.supply_price
-          })
-          .eq('id', item.existingId)
-
-        if (error) {
-          errors.push(`Обновление "${item.material_name}": ${error.message}`)
-        } else {
-          updatedCount++
-        }
-      } else {
-        skippedCount++
-      }
-    }
-
-    setIsProcessingImport(false)
-    setShowImportReport(false)
-    setImportReport(null)
-
-    // Показываем итоговый результат
-    let message = `Импорт завершён!\n\n`
-    message += `Добавлено новых: ${importedCount}\n`
-    message += `Обновлено (по выбору): ${updatedCount}\n`
-    message += `Пропущено (без изменений): ${importReport.sameItems.length}\n`
-    message += `Оставлено без изменений: ${skippedCount}\n`
-    if (errors.length > 0) {
-      message += `\nОшибок: ${errors.length}`
-    }
-    alert(message)
-
-    fetchRates()
-  }
-
-  // Отмена импорта
-  const handleCancelImport = () => {
-    setShowImportReport(false)
-    setImportReport(null)
-    setConflictDecisions({})
-  }
-
-  // Выбор решения для конфликта
-  const handleConflictDecision = (idx, decision) => {
-    setConflictDecisions(prev => ({
-      ...prev,
-      [idx]: decision
-    }))
-  }
-
-  // Выбрать все - обновить
-  const handleSelectAllUpdate = () => {
-    const decisions = {}
-    importReport.conflictItems.forEach((_, idx) => {
-      decisions[idx] = 'update'
-    })
-    setConflictDecisions(decisions)
-  }
-
-  // Выбрать все - оставить
-  const handleSelectAllKeep = () => {
-    const decisions = {}
-    importReport.conflictItems.forEach((_, idx) => {
-      decisions[idx] = 'keep'
-    })
-    setConflictDecisions(decisions)
-  }
-
   const handleExportExcel = () => {
     if (rates.length === 0) return
 
@@ -402,7 +288,7 @@ function BSMRatesPage() {
       '№': idx + 1,
       'Наименование материала': rate.material_name,
       'Ед. изм.': rate.unit,
-      'Цена от снабжения': rate.supply_price,
+      'Согласованная цена': rate.contract_price,
       'Примечание': rate.notes || ''
     }))
 
@@ -410,8 +296,8 @@ function BSMRatesPage() {
     ws['!cols'] = [{ wch: 5 }, { wch: 50 }, { wch: 10 }, { wch: 18 }, { wch: 30 }]
 
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Расценки от снабжения')
-    XLSX.writeFile(wb, `Расценки_снабжение_${selectedObject?.name || 'объект'}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, ws, 'Согласованные расценки')
+    XLSX.writeFile(wb, `Согласованные_расценки_${selectedObject?.name || 'объект'}.xlsx`)
   }
 
   const filteredRates = rates.filter(rate =>
@@ -427,9 +313,9 @@ function BSMRatesPage() {
 
   return (
     <div className="bsm-rates-page">
-      <h1>Расценки от снабжения</h1>
+      <h1>Согласованные расценки</h1>
       <p className="page-description">
-        Актуальные расценки на материалы от отдела снабжения
+        Расценки, зафиксированные в договоре с подрядчиком
       </p>
 
       <div className="object-selector">
@@ -475,9 +361,9 @@ function BSMRatesPage() {
                 onChange={handleImportExcel}
                 ref={fileInputRef}
                 style={{ display: 'none' }}
-                id="import-rates"
+                id="import-contract-rates"
               />
-              <label htmlFor="import-rates" className="btn-import">
+              <label htmlFor="import-contract-rates" className="btn-import">
                 Импорт из Excel
               </label>
               <button
@@ -521,21 +407,13 @@ function BSMRatesPage() {
                       <td>м</td>
                       <td>125.50</td>
                     </tr>
-                    <tr className="example-row">
-                      <td>Труба ПНД 32</td>
-                      <td>м</td>
-                      <td>45.00</td>
-                    </tr>
                   </tbody>
                 </table>
                 <div className="import-notes">
                   <p><strong>Примечания:</strong></p>
                   <ul>
                     <li>Первая строка может содержать заголовки (будет пропущена автоматически)</li>
-                    <li>Система ищет заголовок со словом "наименование" или "материал"</li>
-                    <li>Строки без названия или с нулевой ценой будут пропущены</li>
                     <li>При совпадении названия материала цена будет обновлена</li>
-                    <li>Если цена в столбце C пустая, система проверит столбец D</li>
                   </ul>
                 </div>
               </div>
@@ -562,139 +440,11 @@ function BSMRatesPage() {
                   type="number"
                   step="0.01"
                   placeholder="Цена *"
-                  value={newRate.supply_price}
-                  onChange={(e) => setNewRate({ ...newRate, supply_price: e.target.value })}
+                  value={newRate.contract_price}
+                  onChange={(e) => setNewRate({ ...newRate, contract_price: e.target.value })}
                 />
                 <button onClick={handleAddRate} className="btn-save">Сохранить</button>
                 <button onClick={() => setShowAddForm(false)} className="btn-cancel">Отмена</button>
-              </div>
-            </div>
-          )}
-
-          {/* Диалог отчёта импорта */}
-          {showImportReport && importReport && (
-            <div className="import-report-overlay">
-              <div className="import-report-modal">
-                <div className="import-report-header">
-                  <h2>Отчёт по импорту</h2>
-                  <button onClick={handleCancelImport} className="btn-close">×</button>
-                </div>
-
-                <div className="import-report-summary">
-                  <p><strong>Файл:</strong> {importReport.fileName}</p>
-                  <p><strong>Найдено позиций:</strong> {importReport.totalParsed}</p>
-                </div>
-
-                <div className="import-report-stats">
-                  <div className="stat-item new">
-                    <span className="stat-value">{importReport.newItems.length}</span>
-                    <span className="stat-label">Новых позиций</span>
-                  </div>
-                  <div className="stat-item same">
-                    <span className="stat-value">{importReport.sameItems.length}</span>
-                    <span className="stat-label">Без изменений</span>
-                  </div>
-                  <div className="stat-item conflict">
-                    <span className="stat-value">{importReport.conflictItems.length}</span>
-                    <span className="stat-label">Требуют решения</span>
-                  </div>
-                </div>
-
-                {/* Секция новых позиций */}
-                {importReport.newItems.length > 0 && (
-                  <div className="import-section">
-                    <h3>Новые позиции ({importReport.newItems.length})</h3>
-                    <p className="section-hint">Будут добавлены автоматически</p>
-                    <div className="import-items-list compact">
-                      {importReport.newItems.slice(0, 5).map((item, idx) => (
-                        <div key={idx} className="import-item new-item">
-                          <span className="item-name">{item.material_name}</span>
-                          <span className="item-price">{formatNumber(item.supply_price)}</span>
-                        </div>
-                      ))}
-                      {importReport.newItems.length > 5 && (
-                        <div className="more-items">...и ещё {importReport.newItems.length - 5} позиций</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Секция конфликтов */}
-                {importReport.conflictItems.length > 0 && (
-                  <div className="import-section conflicts">
-                    <h3>Расценки с разными ценами ({importReport.conflictItems.length})</h3>
-                    <p className="section-hint">Выберите, какую цену применить для каждой позиции</p>
-
-                    <div className="conflict-bulk-actions">
-                      <button onClick={handleSelectAllUpdate} className="btn-bulk">
-                        Обновить все на новую
-                      </button>
-                      <button onClick={handleSelectAllKeep} className="btn-bulk">
-                        Оставить все старые
-                      </button>
-                    </div>
-
-                    <div className="conflict-list">
-                      <div className="conflict-header">
-                        <span className="col-name">Наименование</span>
-                        <span className="col-old">Текущая цена</span>
-                        <span className="col-new">Новая цена</span>
-                        <span className="col-diff">Разница</span>
-                        <span className="col-action">Действие</span>
-                      </div>
-                      {importReport.conflictItems.map((item, idx) => (
-                        <div key={idx} className={`conflict-item ${conflictDecisions[idx]}`}>
-                          <span className="col-name" title={item.material_name}>
-                            {item.material_name}
-                          </span>
-                          <span className="col-old">{formatNumber(item.existingPrice)}</span>
-                          <span className="col-new">{formatNumber(item.newPrice)}</span>
-                          <span className={`col-diff ${item.difference > 0 ? 'up' : 'down'}`}>
-                            {item.difference > 0 ? '+' : ''}{formatNumber(item.difference)}
-                            <small>({item.percentDiff > 0 ? '+' : ''}{item.percentDiff.toFixed(1)}%)</small>
-                          </span>
-                          <span className="col-action">
-                            <label className={`radio-option ${conflictDecisions[idx] === 'keep' ? 'selected' : ''}`}>
-                              <input
-                                type="radio"
-                                name={`conflict-${idx}`}
-                                checked={conflictDecisions[idx] === 'keep'}
-                                onChange={() => handleConflictDecision(idx, 'keep')}
-                              />
-                              Оставить
-                            </label>
-                            <label className={`radio-option ${conflictDecisions[idx] === 'update' ? 'selected' : ''}`}>
-                              <input
-                                type="radio"
-                                name={`conflict-${idx}`}
-                                checked={conflictDecisions[idx] === 'update'}
-                                onChange={() => handleConflictDecision(idx, 'update')}
-                              />
-                              Обновить
-                            </label>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="import-report-footer">
-                  <button
-                    onClick={handleCancelImport}
-                    className="btn-cancel"
-                    disabled={isProcessingImport}
-                  >
-                    Отмена
-                  </button>
-                  <button
-                    onClick={handleConfirmImport}
-                    className="btn-confirm"
-                    disabled={isProcessingImport}
-                  >
-                    {isProcessingImport ? 'Обработка...' : 'Применить импорт'}
-                  </button>
-                </div>
               </div>
             </div>
           )}
@@ -704,7 +454,7 @@ function BSMRatesPage() {
           ) : filteredRates.length === 0 ? (
             <div className="empty-state">
               {rates.length === 0
-                ? 'Нет расценок от снабжения для этого объекта. Добавьте расценки вручную или импортируйте из Excel.'
+                ? 'Нет согласованных расценок для этого объекта. Добавьте расценки вручную или импортируйте из Excel.'
                 : 'Ничего не найдено по запросу'}
             </div>
           ) : (
@@ -723,7 +473,7 @@ function BSMRatesPage() {
                     <th className="col-num">№</th>
                     <th className="col-name">Наименование материала</th>
                     <th className="col-unit">Ед. изм.</th>
-                    <th className="col-price">Цена от снабжения</th>
+                    <th className="col-price">Согласованная цена</th>
                     <th className="col-actions">Действия</th>
                   </tr>
                 </thead>
@@ -765,11 +515,11 @@ function BSMRatesPage() {
                           <input
                             type="number"
                             step="0.01"
-                            defaultValue={rate.supply_price}
-                            onBlur={(e) => handleUpdateRate(rate.id, { supply_price: parseFloat(e.target.value) })}
+                            defaultValue={rate.contract_price}
+                            onBlur={(e) => handleUpdateRate(rate.id, { contract_price: parseFloat(e.target.value) })}
                           />
                         ) : (
-                          formatNumber(rate.supply_price)
+                          formatNumber(rate.contract_price)
                         )}
                       </td>
                       <td className="col-actions">
@@ -794,4 +544,4 @@ function BSMRatesPage() {
   )
 }
 
-export default BSMRatesPage
+export default BSMContractRatesPage

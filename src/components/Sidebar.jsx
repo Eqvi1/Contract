@@ -35,7 +35,9 @@ function Sidebar() {
 
   const bsmSubItems = [
     { path: '/bsm/analysis', label: 'Анализ материалов', icon: '📊' },
-    { path: '/bsm/rates', label: 'Согласованные расценки', icon: '💰' },
+    { path: '/bsm/comparison', label: 'Сравнение расценок', icon: '⚖️' },
+    { path: '/bsm/contract-rates', label: 'Согласованные расценки', icon: '📝' },
+    { path: '/bsm/supply-rates', label: 'Расценки от снабжения', icon: '📦' },
   ]
 
   const generalInfoSubItems = [
