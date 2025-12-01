@@ -88,7 +88,8 @@ npm run lint
     - `tenders.sql` - Tenders table
     - `tender_counterparties.sql` - Tender-counterparty relationships with status tracking
     - `tender_estimates.sql` - Estimate items, counterparty proposals, and proposal files
-    - `bsm_rates.sql` - Approved material rates per object
+    - `bsm_contract_rates.sql` - Agreed contract rates for materials
+    - `bsm_supply_rates.sql` - Supply department rates for materials
   - `migrations/` - Database migrations (chronological schema changes)
   - `exports/` - JSON exports of tables, functions, triggers, indexes, enums
 
@@ -126,9 +127,13 @@ npm run lint
   - Unique constraint on `(estimate_item_id, counterparty_id)`
 - **tender_proposal_files** - Uploaded Excel files with contractor proposals
   - Tracks `file_name`, `file_url`, `file_size`, `uploaded_at`
-- **bsm_approved_rates** - Approved material pricing per construction object
+- **bsm_contract_rates** - Agreed contract rates for materials (fixed prices in contracts)
   - Links to `objects` via `object_id` with `ON DELETE CASCADE`
-  - Fields: `material_name`, `unit`, `approved_price`, `notes`
+  - Fields: `material_name`, `unit`, `contract_price`, `notes`
+  - Unique constraint on `(object_id, material_name)` - one rate per material per object
+- **bsm_supply_rates** - Current supply department rates for materials
+  - Links to `objects` via `object_id` with `ON DELETE CASCADE`
+  - Fields: `material_name`, `unit`, `supply_price`, `notes`
   - Unique constraint on `(object_id, material_name)` - one rate per material per object
 - All tables use UUID primary keys and include `created_at`/`updated_at` timestamps
 - Row Level Security (RLS) enabled on all tables with policies for authenticated users
@@ -189,7 +194,9 @@ npm run lint
       - `/contracts/warranty/signed` - Signed warranty contracts
     - **BSM (БСМ)** (collapsible):
       - `/bsm/analysis` - Material analysis from Excel files
-      - `/bsm/rates` - Approved material rates management
+      - `/bsm/comparison` - Compare materials against agreed rates
+      - `/bsm/contract-rates` - Agreed contract rates management
+      - `/bsm/supply-rates` - Supply department rates management
     - `/acceptance` - Work acceptance
     - `/reports` - Reports and analytics
 - Sidebar uses nested collapsible sections with `useState` for expand/collapse
@@ -219,10 +226,11 @@ npm run lint
   - `ContractsPage.jsx` - Contract registry with `department` and `status` props
   - `ContractorProposalsPage.jsx` - Contractor portal for viewing/submitting tender proposals
   - `BSMPage.jsx` - Material analysis tool with Excel import and pivot table creation
-    - Tabs: Все материалы (all), Без расценки (zero price), Разные цены (different prices), Разные ед. изм. (unit mismatches), Сравнение с БСМ (comparison with approved rates)
+    - Tabs: Все материалы (all), Без расценки (zero price), Разные цены (different prices), Разные ед. изм. (unit mismatches)
     - Excel import creates pivot table grouping by material name + price
-    - Compares uploaded data against approved rates from `bsm_approved_rates` table
-  - `BSMRatesPage.jsx` - CRUD for approved material rates per object
+  - `BSMComparisonPage.jsx` - Compare materials against agreed contract and supply rates
+  - `BSMContractRatesPage.jsx` - CRUD for agreed contract rates per object
+  - `BSMRatesPage.jsx` - CRUD for supply department rates per object
   - `AcceptancePage.jsx` - Work acceptance
   - `ReportsPage.jsx` - Reports
 
@@ -253,7 +261,9 @@ src/
 │   ├── ContractsPage.jsx
 │   ├── ContractorProposalsPage.jsx  # Contractor portal
 │   ├── BSMPage.jsx           # Material analysis with Excel pivot
-│   ├── BSMRatesPage.jsx      # Approved rates management
+│   ├── BSMComparisonPage.jsx # Compare materials against agreed rates
+│   ├── BSMContractRatesPage.jsx  # Agreed contract rates management
+│   ├── BSMRatesPage.jsx      # Supply department rates management
 │   ├── AcceptancePage.jsx
 │   └── ReportsPage.jsx
 └── supabase/             # Supabase configuration
@@ -270,7 +280,9 @@ supabase/                 # Database schema and configuration
 │   ├── contracts.sql
 │   ├── tenders.sql
 │   ├── tender_counterparties.sql
-│   └── tender_estimates.sql  # Estimate items, proposals, proposal files
+│   ├── tender_estimates.sql  # Estimate items, proposals, proposal files
+│   ├── bsm_contract_rates.sql  # Agreed contract rates
+│   └── bsm_supply_rates.sql    # Supply department rates
 ├── migrations/           # Database migrations
 └── exports/              # Database structure exports
 

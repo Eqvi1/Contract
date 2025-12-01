@@ -5,13 +5,33 @@ import './BSMPage.css'
 
 function BSMPage() {
   const [pivotData, setPivotData] = useState([])
-  const [fileName, setFileName] = useState('')
+  const [materialsData, setMaterialsData] = useState([]) // только материалы
+  const [worksData, setWorksData] = useState([]) // только работы
+
+  // Накопительные данные из всех загруженных файлов
+  const [loadedFiles, setLoadedFiles] = useState([]) // список загруженных файлов {name, rowCount}
+  const [allRawRows, setAllRawRows] = useState([]) // все сырые строки из всех файлов
+
   const [isLoading, setIsLoading] = useState(false)
   const [stats, setStats] = useState(null)
+
+  // Главная вкладка: материалы или работы
+  const [mainTab, setMainTab] = useState('materials') // 'materials' | 'works'
+  // Подвкладка для анализа
   const [activeTab, setActiveTab] = useState('all') // 'all', 'zero', 'different', 'units', 'compare', 'not_in_supply'
+
   const [expandedItems, setExpandedItems] = useState({}) // для раскрытия деталей
-  const [groupedDifferentPrices, setGroupedDifferentPrices] = useState([]) // сгруппированные материалы с разными ценами
-  const [differentUnitsData, setDifferentUnitsData] = useState([]) // материалы с разными ед. изм.
+
+  // Данные анализа для материалов
+  const [materialsGroupedDifferentPrices, setMaterialsGroupedDifferentPrices] = useState([])
+  const [materialsDifferentUnitsData, setMaterialsDifferentUnitsData] = useState([])
+  const [materialsStats, setMaterialsStats] = useState(null)
+
+  // Данные анализа для работ
+  const [worksGroupedDifferentPrices, setWorksGroupedDifferentPrices] = useState([])
+  const [worksDifferentUnitsData, setWorksDifferentUnitsData] = useState([])
+  const [worksStats, setWorksStats] = useState(null)
+
   const fileInputRef = useRef(null)
 
   // Для сравнения с согласованными расценками
@@ -20,6 +40,9 @@ function BSMPage() {
   const [approvedRates, setApprovedRates] = useState([])
   const [comparisonData, setComparisonData] = useState([])
   const [comparisonStats, setComparisonStats] = useState(null)
+
+  // Вспомогательная функция округления до сотых (2 знака после запятой)
+  const round2 = (num) => Math.round((parseFloat(num) || 0) * 100) / 100
 
   // Загрузка объектов при монтировании
   useEffect(() => {
@@ -37,12 +60,12 @@ function BSMPage() {
     }
   }, [selectedObjectId])
 
-  // Пересчёт сравнения при изменении данных
+  // Пересчёт сравнения при изменении данных материалов
   useEffect(() => {
-    if (pivotData.length > 0 && approvedRates.length > 0) {
+    if (materialsData.length > 0 && approvedRates.length > 0) {
       calculateComparison()
     }
-  }, [pivotData, approvedRates])
+  }, [materialsData, approvedRates])
 
   const fetchObjects = async () => {
     const { data, error } = await supabase
@@ -71,10 +94,10 @@ function BSMPage() {
     const ratesMap = {}
     approvedRates.forEach(rate => {
       const key = rate.material_name.trim().toLowerCase()
-      ratesMap[key] = rate.supply_price
+      ratesMap[key] = round2(rate.supply_price)
     })
 
-    // Сравниваем каждую позицию
+    // Сравниваем только материалы, у которых есть расценка в файле
     const comparison = []
     let totalCurrentSum = 0      // Сумма по файлу (только найденные в снабжении)
     let totalApprovedSum = 0     // Сумма по снабжению
@@ -83,25 +106,29 @@ function BSMPage() {
     let notFoundCount = 0
     let priceDiffCount = 0
 
-    pivotData.forEach(item => {
+    // Используем только материалы с ненулевой ценой
+    const materialsWithPrice = materialsData.filter(item => item.priceMaterials > 0)
+
+    materialsWithPrice.forEach(item => {
       const key = item.name.trim().toLowerCase()
       const approvedPrice = ratesMap[key]
-      const currentSum = item.totalVolume * (item.price || 0)
+      const currentPrice = round2(item.priceMaterials || 0)
+      const currentSum = round2(item.totalVolume * currentPrice)
 
       let approvedSum = 0
       let difference = 0
       let status = 'not_found'
 
       if (approvedPrice !== undefined) {
-        approvedSum = item.totalVolume * approvedPrice
+        approvedSum = round2(item.totalVolume * approvedPrice)
         // Разница = снабжение - файл (отрицательное = удешевление)
-        difference = approvedSum - currentSum
+        difference = round2(approvedSum - currentSum)
 
-        totalCurrentSum += currentSum
-        totalApprovedSum += approvedSum
-        totalDifference += difference
+        totalCurrentSum = round2(totalCurrentSum + currentSum)
+        totalApprovedSum = round2(totalApprovedSum + approvedSum)
+        totalDifference = round2(totalDifference + difference)
 
-        if (Math.abs(item.price - approvedPrice) < 0.01) {
+        if (Math.abs(currentPrice - approvedPrice) < 0.01) {
           status = 'match'
           matchedCount++
         } else {
@@ -114,6 +141,7 @@ function BSMPage() {
 
       comparison.push({
         ...item,
+        price: currentPrice, // для совместимости с отображением
         approvedPrice: approvedPrice,
         currentSum: currentSum,
         approvedSum: approvedSum,
@@ -130,200 +158,456 @@ function BSMPage() {
       matchedCount,
       priceDiffCount,
       notFoundCount,
-      totalItems: pivotData.length
+      totalItems: materialsWithPrice.length
     })
+  }
+
+  // Определение типа позиции по коду
+  const getItemType = (code) => {
+    if (!code) return 'material'
+    const codeStr = String(code).trim().toLowerCase()
+    // Если код начинается с "р" или равен "р" - это работа
+    if (codeStr === 'р' || codeStr.startsWith('р-') || codeStr.startsWith('р ')) {
+      return 'work'
+    }
+    // Если код содержит "мат" - это материал
+    if (codeStr.includes('мат')) {
+      return 'material'
+    }
+    // По умолчанию - материал
+    return 'material'
   }
 
   // Создание сводной таблицы как в Excel
   const createPivotTable = (rows) => {
-    // Группируем по наименованию + цена (ключ: название + цена)
-    const pivotMap = {}
+    // Две отдельные карты: для материалов и для работ
+    const materialsMap = {}
+    const worksMap = {}
 
     rows.forEach(row => {
       const name = (row.name || '').trim()
       if (!name) return
 
-      const price = parseFloat(row.price) || 0
-      const volume = parseFloat(row.volume) || 0
+      const priceMaterials = round2(row.priceMaterials)
+      const priceWorks = round2(row.priceWorks)
+      const volume = round2(row.volume)
+      const itemType = row.type || 'material'
 
-      // Ключ: наименование + цена (если цена разная - это разные строки)
-      const key = `${name.toLowerCase()}|${price.toFixed(2)}`
+      // Для работ (тип "Р") - добавляем только в работы
+      if (itemType === 'work') {
+        const key = `${name.toLowerCase()}|work|${priceWorks.toFixed(2)}`
+        if (!worksMap[key]) {
+          worksMap[key] = {
+            name: name,
+            unit: row.unit || '',
+            type: 'work',
+            priceMaterials: 0,
+            priceWorks: priceWorks,
+            totalVolume: 0,
+            count: 0,
+            isZeroPrice: priceWorks === 0
+          }
+        }
+        worksMap[key].totalVolume = round2(worksMap[key].totalVolume + volume)
+        worksMap[key].count += 1
+      } else {
+        // Для материалов (тип "мат."):
+        // 1. Если есть цена материалов - добавляем в материалы
+        if (priceMaterials > 0) {
+          const matKey = `${name.toLowerCase()}|material|${priceMaterials.toFixed(2)}`
+          if (!materialsMap[matKey]) {
+            materialsMap[matKey] = {
+              name: name,
+              unit: row.unit || '',
+              type: 'material',
+              priceMaterials: priceMaterials,
+              priceWorks: 0,
+              totalVolume: 0,
+              count: 0,
+              isZeroPrice: false
+            }
+          }
+          materialsMap[matKey].totalVolume = round2(materialsMap[matKey].totalVolume + volume)
+          materialsMap[matKey].count += 1
+        }
 
-      if (!pivotMap[key]) {
-        pivotMap[key] = {
-          name: name,
-          unit: row.unit || '',
-          price: price,
-          totalVolume: 0,
-          count: 0,
-          isZeroPrice: price === 0
+        // 2. Если есть цена работ - добавляем в работы (монтаж материала)
+        if (priceWorks > 0) {
+          const workKey = `${name.toLowerCase()}|material_work|${priceWorks.toFixed(2)}`
+          if (!worksMap[workKey]) {
+            worksMap[workKey] = {
+              name: name,
+              unit: row.unit || '',
+              type: 'material_work', // Работы по монтажу материала
+              priceMaterials: 0,
+              priceWorks: priceWorks,
+              totalVolume: 0,
+              count: 0,
+              isZeroPrice: false
+            }
+          }
+          worksMap[workKey].totalVolume = round2(worksMap[workKey].totalVolume + volume)
+          worksMap[workKey].count += 1
+        }
+
+        // 3. Если нет ни цены материалов, ни цены работ - добавляем в материалы как "без расценки"
+        if (priceMaterials === 0 && priceWorks === 0) {
+          const zeroKey = `${name.toLowerCase()}|material|0.00`
+          if (!materialsMap[zeroKey]) {
+            materialsMap[zeroKey] = {
+              name: name,
+              unit: row.unit || '',
+              type: 'material',
+              priceMaterials: 0,
+              priceWorks: 0,
+              totalVolume: 0,
+              count: 0,
+              isZeroPrice: true
+            }
+          }
+          materialsMap[zeroKey].totalVolume = round2(materialsMap[zeroKey].totalVolume + volume)
+          materialsMap[zeroKey].count += 1
         }
       }
-
-      pivotMap[key].totalVolume += volume
-      pivotMap[key].count += 1
     })
 
-    // Преобразуем в массив и сортируем по названию
-    const pivotArray = Object.values(pivotMap).sort((a, b) =>
+    // Преобразуем в массивы и сортируем по названию
+    const materials = Object.values(materialsMap).sort((a, b) =>
+      a.name.localeCompare(b.name, 'ru')
+    )
+    const works = Object.values(worksMap).sort((a, b) =>
       a.name.localeCompare(b.name, 'ru')
     )
 
-    // Находим материалы с разными ценами
-    const nameGroups = {}
-    pivotArray.forEach(item => {
-      const nameLower = item.name.toLowerCase()
-      if (!nameGroups[nameLower]) {
-        nameGroups[nameLower] = []
-      }
-      nameGroups[nameLower].push(item)
-    })
+    // Общий массив для совместимости
+    const pivotArray = [...materials, ...works].sort((a, b) =>
+      a.name.localeCompare(b.name, 'ru')
+    )
 
     // Помечаем материалы с разными ценами и добавляем список всех цен
-    pivotArray.forEach(item => {
+    // Для материалов - группируем по названию среди материалов
+    // Для работ - группируем по названию среди работ
+    const materialsByName = {}
+    materials.forEach(item => {
       const nameLower = item.name.toLowerCase()
-      const group = nameGroups[nameLower]
-      item.hasDifferentPrices = group.length > 1
+      if (!materialsByName[nameLower]) materialsByName[nameLower] = []
+      materialsByName[nameLower].push(item)
+    })
 
+    const worksByName = {}
+    works.forEach(item => {
+      const nameLower = item.name.toLowerCase()
+      if (!worksByName[nameLower]) worksByName[nameLower] = []
+      worksByName[nameLower].push(item)
+    })
+
+    materials.forEach(item => {
+      const nameLower = item.name.toLowerCase()
+      const group = materialsByName[nameLower]
+      item.hasDifferentPrices = group.length > 1
       if (item.hasDifferentPrices) {
-        // Собираем все цены для этого материала
-        item.allPrices = group.map(g => g.price).sort((a, b) => a - b)
+        item.allPrices = group.map(g => g.priceMaterials).sort((a, b) => a - b)
       }
     })
 
-    // Статистика
-    const zeroPriceCount = pivotArray.filter(item => item.isZeroPrice).length
-    const differentPricesCount = Object.values(nameGroups).filter(g => g.length > 1).length
+    works.forEach(item => {
+      const nameLower = item.name.toLowerCase()
+      const group = worksByName[nameLower]
+      item.hasDifferentPrices = group.length > 1
+      if (item.hasDifferentPrices) {
+        item.allPrices = group.map(g => g.priceWorks).sort((a, b) => a - b)
+      }
+    })
 
-    // Группируем материалы с разными ценами для отдельной вкладки
-    const groupedDifferent = Object.values(nameGroups)
-      .filter(g => g.length > 1)
-      .map(group => ({
-        name: group[0].name,
-        unit: group[0].unit,
-        totalVolume: group.reduce((sum, item) => sum + item.totalVolume, 0),
-        variants: group.map(item => ({
-          price: item.price,
-          volume: item.totalVolume,
-          count: item.count
-        })).sort((a, b) => a.price - b.price)
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+    // Группируем материалы с разными ценами для отдельной вкладки (раздельно для материалов и работ)
+    const materialsNameGroups = {}
+    const worksNameGroups = {}
 
-    // Анализ единиц измерения - группируем по названию и проверяем разные ед. изм.
-    const unitsByName = {}
+    // Материалы - только type === 'material'
+    materials.forEach(item => {
+      const nameLower = item.name.toLowerCase()
+      if (!materialsNameGroups[nameLower]) {
+        materialsNameGroups[nameLower] = []
+      }
+      materialsNameGroups[nameLower].push(item)
+    })
+
+    // Работы - type === 'work' или 'material_work'
+    works.forEach(item => {
+      const nameLower = item.name.toLowerCase()
+      if (!worksNameGroups[nameLower]) {
+        worksNameGroups[nameLower] = []
+      }
+      worksNameGroups[nameLower].push(item)
+    })
+
+    // Функция для создания сгруппированных позиций с разными ценами
+    const createGroupedDifferent = (nameGroups, priceField) => {
+      return Object.values(nameGroups)
+        .filter(g => g.length > 1)
+        .map(group => ({
+          name: group[0].name,
+          unit: group[0].unit,
+          type: group[0].type,
+          totalVolume: group.reduce((sum, item) => sum + item.totalVolume, 0),
+          variants: group.map(item => ({
+            price: item[priceField],
+            volume: item.totalVolume,
+            count: item.count
+          })).sort((a, b) => a.price - b.price)
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+    }
+
+    const materialsGroupedDifferent = createGroupedDifferent(materialsNameGroups, 'priceMaterials')
+    const worksGroupedDifferent = createGroupedDifferent(worksNameGroups, 'priceWorks')
+
+    // Анализ единиц измерения - группируем по названию и типу, проверяем разные ед. изм.
+    const materialsUnitsByName = {}
+    const worksUnitsByName = {}
+
     rows.forEach(row => {
       const name = (row.name || '').trim().toLowerCase()
       const unit = (row.unit || '').trim()
+      const itemType = row.type || 'material'
       if (!name) return
 
-      if (!unitsByName[name]) {
-        unitsByName[name] = {
+      const targetUnits = itemType === 'material' ? materialsUnitsByName : worksUnitsByName
+
+      if (!targetUnits[name]) {
+        targetUnits[name] = {
           originalName: row.name,
           units: {}
         }
       }
-      if (!unitsByName[name].units[unit]) {
-        unitsByName[name].units[unit] = {
+      if (!targetUnits[name].units[unit]) {
+        targetUnits[name].units[unit] = {
           unit: unit,
           volume: 0,
           count: 0
         }
       }
-      unitsByName[name].units[unit].volume += parseFloat(row.volume) || 0
-      unitsByName[name].units[unit].count += 1
+      targetUnits[name].units[unit].volume += parseFloat(row.volume) || 0
+      targetUnits[name].units[unit].count += 1
     })
 
-    // Фильтруем только те, где больше одной единицы измерения
-    const differentUnits = Object.values(unitsByName)
-      .filter(item => Object.keys(item.units).length > 1)
-      .map(item => ({
-        name: item.originalName,
-        variants: Object.values(item.units).sort((a, b) => b.count - a.count)
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+    // Функция для создания списка позиций с разными ед. изм.
+    const createDifferentUnits = (unitsByName) => {
+      return Object.values(unitsByName)
+        .filter(item => Object.keys(item.units).length > 1)
+        .map(item => ({
+          name: item.originalName,
+          variants: Object.values(item.units).sort((a, b) => b.count - a.count)
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+    }
+
+    const materialsDifferentUnits = createDifferentUnits(materialsUnitsByName)
+    const worksDifferentUnits = createDifferentUnits(worksUnitsByName)
+
+    // Статистика для материалов
+    const materialsZeroPriceCount = materials.filter(item => item.isZeroPrice).length
+    const materialsDifferentPricesCount = Object.values(materialsNameGroups).filter(g => g.length > 1).length
+
+    // Статистика для работ
+    const worksZeroPriceCount = works.filter(item => item.isZeroPrice).length
+    const worksDifferentPricesCount = Object.values(worksNameGroups).filter(g => g.length > 1).length
 
     return {
       pivotArray,
-      groupedDifferent,
-      differentUnits,
+      materials,
+      works,
+      // Данные анализа для материалов
+      materialsGroupedDifferent,
+      materialsDifferentUnits,
+      materialsStats: {
+        totalItems: materials.length,
+        zeroPriceCount: materialsZeroPriceCount,
+        differentPricesCount: materialsDifferentPricesCount,
+        differentUnitsCount: materialsDifferentUnits.length
+      },
+      // Данные анализа для работ
+      worksGroupedDifferent,
+      worksDifferentUnits,
+      worksStats: {
+        totalItems: works.length,
+        zeroPriceCount: worksZeroPriceCount,
+        differentPricesCount: worksDifferentPricesCount,
+        differentUnitsCount: worksDifferentUnits.length
+      },
+      // Общая статистика
       stats: {
         totalRows: rows.length,
         uniqueLines: pivotArray.length,
-        zeroPriceCount,
-        differentPricesCount,
-        differentUnitsCount: differentUnits.length
+        materialsCount: materials.length,
+        worksCount: works.length
       }
     }
   }
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
+  // Парсинг одного файла и возврат строк
+  const parseExcelFile = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        try {
+          const workbook = XLSX.read(event.target.result, { type: 'binary' })
+          const sheetName = workbook.SheetNames[0]
+          const worksheet = workbook.Sheets[sheetName]
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+
+          const rows = []
+
+          // Находим строку заголовка
+          let headerRowIndex = 0
+          for (let i = 0; i < Math.min(10, jsonData.length); i++) {
+            const row = jsonData[i]
+            if (row && row.some(cell =>
+              cell && typeof cell === 'string' &&
+              (cell.toLowerCase().includes('наименование') ||
+               cell.toLowerCase().includes('материал') ||
+               cell.toLowerCase().includes('код'))
+            )) {
+              headerRowIndex = i
+              break
+            }
+          }
+
+          // Парсим данные после заголовка
+          // Новый формат: КОД | Наименование | Ед.изм. | Объем | Цена материалов | Цена работ
+          for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
+            const row = jsonData[i]
+            if (!row) continue
+
+            const code = String(row[0] || '').trim()
+            // Пропускаем строки без КОДа
+            if (!code) continue
+
+            const itemType = getItemType(code)
+
+            rows.push({
+              code: code,
+              type: itemType,
+              name: row[1] || '',
+              unit: row[2] || '',
+              volume: row[3] || 0,
+              priceMaterials: row[4] || 0,
+              priceWorks: row[5] || 0,
+              sourceFile: file.name // для отслеживания источника
+            })
+          }
+
+          resolve({ fileName: file.name, rows })
+        } catch (error) {
+          reject(error)
+        }
+      }
+      reader.onerror = reject
+      reader.readAsBinaryString(file)
+    })
+  }
+
+  // Пересчёт сводной таблицы из всех накопленных строк
+  const recalculateFromRows = (rows) => {
+    const result = createPivotTable(rows)
+    setPivotData(result.pivotArray)
+    setMaterialsData(result.materials)
+    setWorksData(result.works)
+
+    // Данные анализа для материалов
+    setMaterialsGroupedDifferentPrices(result.materialsGroupedDifferent)
+    setMaterialsDifferentUnitsData(result.materialsDifferentUnits)
+    setMaterialsStats(result.materialsStats)
+
+    // Данные анализа для работ
+    setWorksGroupedDifferentPrices(result.worksGroupedDifferent)
+    setWorksDifferentUnitsData(result.worksDifferentUnits)
+    setWorksStats(result.worksStats)
+
+    setStats(result.stats)
+  }
+
+  const handleFileUpload = async (e) => {
+    const files = Array.from(e.target.files)
+    if (files.length === 0) return
 
     setIsLoading(true)
-    setFileName(file.name)
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      try {
-        const workbook = XLSX.read(event.target.result, { type: 'binary' })
-        const sheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[sheetName]
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+    try {
+      // Парсим все выбранные файлы
+      const results = await Promise.all(files.map(parseExcelFile))
 
-        const rows = []
+      // Добавляем новые строки к существующим
+      let newRows = [...allRawRows]
+      const newFiles = [...loadedFiles]
 
-        // Находим строку заголовка
-        let headerRowIndex = 0
-        for (let i = 0; i < Math.min(10, jsonData.length); i++) {
-          const row = jsonData[i]
-          if (row && row.some(cell =>
-            cell && typeof cell === 'string' &&
-            (cell.toLowerCase().includes('наименование') ||
-             cell.toLowerCase().includes('материал'))
-          )) {
-            headerRowIndex = i
-            break
-          }
+      results.forEach(({ fileName, rows }) => {
+        // Проверяем, не загружен ли уже файл с таким именем
+        if (!loadedFiles.some(f => f.name === fileName)) {
+          newRows = [...newRows, ...rows]
+          newFiles.push({ name: fileName, rowCount: rows.length })
+        } else {
+          alert(`Файл "${fileName}" уже загружен`)
         }
+      })
 
-        // Парсим данные после заголовка
-        for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
-          const row = jsonData[i]
-          if (!row || !row[0]) continue
+      setAllRawRows(newRows)
+      setLoadedFiles(newFiles)
+      recalculateFromRows(newRows)
 
-          rows.push({
-            name: row[0] || '',
-            unit: row[1] || '',
-            volume: row[2] || 0,
-            price: row[3] || 0
-          })
-        }
-
-        const { pivotArray, groupedDifferent, differentUnits, stats } = createPivotTable(rows)
-        setPivotData(pivotArray)
-        setGroupedDifferentPrices(groupedDifferent)
-        setDifferentUnitsData(differentUnits)
-        setStats(stats)
-      } catch (error) {
-        console.error('Ошибка при чтении файла:', error)
-        alert('Ошибка при чтении файла. Убедитесь, что это корректный Excel-файл.')
-      } finally {
-        setIsLoading(false)
+    } catch (error) {
+      console.error('Ошибка при чтении файла:', error)
+      alert('Ошибка при чтении файла. Убедитесь, что это корректный Excel-файл.')
+    } finally {
+      setIsLoading(false)
+      // Сбрасываем input для возможности повторной загрузки того же файла
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
       }
     }
-    reader.readAsBinaryString(file)
+  }
+
+  // Удаление одного файла из списка
+  const handleRemoveFile = (fileNameToRemove) => {
+    const newFiles = loadedFiles.filter(f => f.name !== fileNameToRemove)
+    const newRows = allRawRows.filter(row => row.sourceFile !== fileNameToRemove)
+
+    setLoadedFiles(newFiles)
+    setAllRawRows(newRows)
+
+    if (newRows.length > 0) {
+      recalculateFromRows(newRows)
+    } else {
+      // Если удалили все файлы - сбросить всё
+      handleClear()
+    }
   }
 
   const handleClear = () => {
     setPivotData([])
-    setGroupedDifferentPrices([])
-    setDifferentUnitsData([])
+    setMaterialsData([])
+    setWorksData([])
+
+    // Сброс накопительных данных
+    setLoadedFiles([])
+    setAllRawRows([])
+
+    // Сброс анализа материалов
+    setMaterialsGroupedDifferentPrices([])
+    setMaterialsDifferentUnitsData([])
+    setMaterialsStats(null)
+
+    // Сброс анализа работ
+    setWorksGroupedDifferentPrices([])
+    setWorksDifferentUnitsData([])
+    setWorksStats(null)
+
     setStats(null)
-    setFileName('')
+    setMainTab('materials')
     setActiveTab('all')
     setExpandedItems({})
+    setComparisonData([])
+    setComparisonStats(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -336,19 +620,57 @@ function BSMPage() {
     }))
   }
 
-  // Фильтрация данных по активной вкладке
+  // Функция расчёта суммы позиции
+  // Для работ: объём × цена работ
+  // Для материалов: объём × цена материалов + объём × цена работ (если есть)
+  const calculateItemTotal = (item) => {
+    if (item.type === 'work') {
+      return round2(item.totalVolume * (item.priceWorks || 0))
+    }
+    // Для материалов: сумма материалов + сумма работ (если указана цена работ)
+    const materialsSum = round2(item.totalVolume * (item.priceMaterials || 0))
+    const worksSum = round2(item.totalVolume * (item.priceWorks || 0))
+    return round2(materialsSum + worksSum)
+  }
+
+  // Расчёт суммы только по материалам (без работ)
+  const calculateMaterialsSum = (item) => {
+    return round2(item.totalVolume * (item.priceMaterials || 0))
+  }
+
+  // Расчёт суммы только по работам
+  const calculateWorksSum = (item) => {
+    return round2(item.totalVolume * (item.priceWorks || 0))
+  }
+
+  // Получение цены для позиции (в зависимости от типа)
+  const getItemPrice = (item) => {
+    return item.type === 'work' ? item.priceWorks : item.priceMaterials
+  }
+
+  // Получение текущих данных в зависимости от главной вкладки
+  const getCurrentData = () => mainTab === 'materials' ? materialsData : worksData
+  const getCurrentStats = () => mainTab === 'materials' ? materialsStats : worksStats
+  const getCurrentGroupedDifferentPrices = () => mainTab === 'materials' ? materialsGroupedDifferentPrices : worksGroupedDifferentPrices
+  const getCurrentDifferentUnitsData = () => mainTab === 'materials' ? materialsDifferentUnitsData : worksDifferentUnitsData
+
+  // Фильтрация данных по активной подвкладке
   const getFilteredData = () => {
+    const currentData = getCurrentData()
     switch (activeTab) {
       case 'zero':
-        return pivotData.filter(item => item.isZeroPrice)
+        return currentData.filter(item => item.isZeroPrice)
       case 'different':
-        return pivotData.filter(item => item.hasDifferentPrices)
+        return currentData.filter(item => item.hasDifferentPrices)
       default:
-        return pivotData
+        return currentData
     }
   }
 
   const filteredData = getFilteredData()
+  const currentStats = getCurrentStats()
+  const currentGroupedDifferentPrices = getCurrentGroupedDifferentPrices()
+  const currentDifferentUnitsData = getCurrentDifferentUnitsData()
 
   const handleExport = () => {
     if (pivotData.length === 0) return
@@ -369,28 +691,40 @@ function BSMPage() {
       ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } })
     }
 
-    // Общая сумма
-    const totalSum = pivotData.reduce((sum, item) => sum + (item.totalVolume * (item.price || 0)), 0)
+    // Общие суммы
+    // Для материалов: только стоимость материалов
+    const totalMaterialsSum = round2(materialsData.reduce((sum, item) => sum + round2(item.totalVolume * (item.priceMaterials || 0)), 0))
+    // Для работ: все работы (включая монтаж материалов)
+    const totalWorksSum = round2(worksData.reduce((sum, item) => sum + round2(item.totalVolume * (item.priceWorks || 0)), 0))
+    const totalSum = round2(totalMaterialsSum + totalWorksSum)
 
-    // 1. Лист "Все материалы"
-    const allHeaders = ['№', 'Наименование материалов', 'Ед. изм.', 'Итого объем', 'Цена за ед. с НДС', 'Итого сумма', 'Кол-во поз.', 'Примечание']
-    const allRows = pivotData.map((item, idx) => [
-      idx + 1,
-      item.name,
-      item.unit,
-      item.totalVolume,
-      item.price || '',
-      item.price ? item.totalVolume * item.price : '',
-      item.count,
-      item.isZeroPrice ? 'Нет расценки' : (item.hasDifferentPrices ? 'Разные цены' : '')
-    ])
+    // 1. Лист "Все позиции"
+    const allHeaders = ['№', 'Тип', 'Наименование', 'Ед. изм.', 'Объем', 'Цена', 'Сумма', 'Кол-во', 'Примечание']
+    const allRows = pivotData.map((item, idx) => {
+      // Для материалов - цена материалов, для работ - цена работ
+      const price = item.type === 'material' ? item.priceMaterials : item.priceWorks
+      const itemSum = round2(item.totalVolume * (price || 0))
+      const typeLabel = item.type === 'work' ? 'Р' : (item.type === 'material_work' ? 'монтаж' : 'мат.')
+      return [
+        idx + 1,
+        typeLabel,
+        item.name,
+        item.unit,
+        item.totalVolume,
+        price || '',
+        itemSum || '',
+        item.count,
+        item.isZeroPrice ? 'Нет расценки' : (item.hasDifferentPrices ? 'Разные цены' : '')
+      ]
+    })
 
     // Итоговая строка
-    allRows.push(['', '', '', '', 'ИТОГО:', totalSum, '', ''])
+    allRows.push(['', '', '', '', '', 'ИТОГО:', totalSum, '', ''])
 
     const wsAll = XLSX.utils.aoa_to_sheet([
-      ['ОТЧЕТ ПО МАТЕРИАЛАМ'],
+      ['ОТЧЕТ ПО МАТЕРИАЛАМ И РАБОТАМ'],
       ['Дата формирования: ' + new Date().toLocaleDateString('ru-RU')],
+      ['Материалы: ' + totalMaterialsSum.toLocaleString('ru-RU') + ' | Работы: ' + totalWorksSum.toLocaleString('ru-RU') + ' | ИТОГО: ' + totalSum.toLocaleString('ru-RU')],
       [],
       allHeaders,
       ...allRows
@@ -398,17 +732,114 @@ function BSMPage() {
 
     // Объединение для заголовка
     wsAll['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 8 } }
     ]
 
-    setColWidths(wsAll, [5, 50, 10, 15, 18, 18, 10, 15])
-    XLSX.utils.book_append_sheet(wb, wsAll, 'Все материалы')
+    setColWidths(wsAll, [5, 10, 45, 10, 12, 14, 18, 8, 15])
+    XLSX.utils.book_append_sheet(wb, wsAll, 'Все позиции')
 
-    // 2. Лист "Без расценки"
-    const zeroItems = pivotData.filter(item => item.isZeroPrice)
+    // 2. Лист "Материалы"
+    if (materialsData.length > 0) {
+      const matHeaders = ['№', 'Наименование', 'Ед. изм.', 'Объем', 'Цена', 'Сумма', 'Кол-во']
+      const matRows = materialsData.map((item, idx) => {
+        const matSum = round2(item.totalVolume * (item.priceMaterials || 0))
+        return [
+          idx + 1,
+          item.name,
+          item.unit,
+          item.totalVolume,
+          item.priceMaterials || '',
+          matSum || '',
+          item.count
+        ]
+      })
+
+      matRows.push(['', '', '', '', 'ИТОГО:', totalMaterialsSum, ''])
+
+      const wsMat = XLSX.utils.aoa_to_sheet([
+        ['МАТЕРИАЛЫ'],
+        ['Позиций: ' + materialsData.length + ' | Сумма: ' + totalMaterialsSum.toLocaleString('ru-RU')],
+        [],
+        matHeaders,
+        ...matRows
+      ])
+
+      wsMat['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }
+      ]
+
+      setColWidths(wsMat, [5, 50, 10, 12, 14, 18, 8])
+      XLSX.utils.book_append_sheet(wb, wsMat, 'Материалы')
+    }
+
+    // 3. Лист "Работы"
+    if (worksData.length > 0) {
+      const workHeaders = ['№', 'Наименование', 'Ед. изм.', 'Объем', 'Цена работ', 'Сумма работ', 'Кол-во']
+      const workRows = worksData.map((item, idx) => [
+        idx + 1,
+        item.name,
+        item.unit,
+        item.totalVolume,
+        item.priceWorks || '',
+        round2(item.totalVolume * (item.priceWorks || 0)) || '',
+        item.count
+      ])
+
+      workRows.push(['', '', '', '', 'ИТОГО:', totalWorksSum, ''])
+
+      const wsWork = XLSX.utils.aoa_to_sheet([
+        ['РАБОТЫ (код "Р")'],
+        ['Позиций: ' + worksData.length + ' | Сумма работ: ' + totalWorksSum.toLocaleString('ru-RU')],
+        [],
+        workHeaders,
+        ...workRows
+      ])
+
+      wsWork['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }
+      ]
+
+      setColWidths(wsWork, [5, 50, 10, 12, 15, 18, 8])
+      XLSX.utils.book_append_sheet(wb, wsWork, 'Работы')
+    }
+
+    // 3.1. Лист "Работы без расценки"
+    const zeroWorksItems = worksData.filter(item => item.isZeroPrice)
+    if (zeroWorksItems.length > 0) {
+      const zeroWorksHeaders = ['№', 'Наименование', 'Ед. изм.', 'Объем', 'Кол-во']
+      const zeroWorksRows = zeroWorksItems.map((item, idx) => [
+        idx + 1,
+        item.name,
+        item.unit,
+        item.totalVolume,
+        item.count
+      ])
+
+      const wsZeroWorks = XLSX.utils.aoa_to_sheet([
+        ['РАБОТЫ БЕЗ РАСЦЕНКИ'],
+        ['Обнаружено позиций: ' + zeroWorksItems.length],
+        [],
+        zeroWorksHeaders,
+        ...zeroWorksRows
+      ])
+
+      wsZeroWorks['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } }
+      ]
+
+      setColWidths(wsZeroWorks, [5, 50, 10, 15, 8])
+      XLSX.utils.book_append_sheet(wb, wsZeroWorks, 'Работы без расценки')
+    }
+
+    // 4. Лист "Материалы без расценки"
+    const zeroItems = materialsData.filter(item => item.isZeroPrice)
     if (zeroItems.length > 0) {
-      const zeroHeaders = ['№', 'Наименование материалов', 'Ед. изм.', 'Итого объем', 'Кол-во поз.']
+      const zeroHeaders = ['№', 'Наименование', 'Ед. изм.', 'Объем', 'Кол-во']
       const zeroRows = zeroItems.map((item, idx) => [
         idx + 1,
         item.name,
@@ -430,22 +861,22 @@ function BSMPage() {
         { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } }
       ]
 
-      setColWidths(wsZero, [5, 50, 10, 15, 10])
-      XLSX.utils.book_append_sheet(wb, wsZero, 'Без расценки')
+      setColWidths(wsZero, [5, 50, 10, 15, 8])
+      XLSX.utils.book_append_sheet(wb, wsZero, 'Мат. без расценки')
     }
 
-    // 3. Лист "Разные цены"
-    if (groupedDifferentPrices.length > 0) {
-      const diffPricesRows = [
+    // 5. Лист "Разные цены (мат.)" - только материалы с разными ценами
+    if (materialsGroupedDifferentPrices.length > 0) {
+      const diffMatPricesRows = [
         ['МАТЕРИАЛЫ С РАЗНЫМИ РАСЦЕНКАМИ'],
-        ['Обнаружено материалов: ' + groupedDifferentPrices.length],
+        ['Обнаружено позиций: ' + materialsGroupedDifferentPrices.length],
         [],
-        ['№', 'Наименование материалов', 'Ед. изм.', 'Общий объем', 'Цена за ед.', 'Объем по цене', 'Кол-во поз.']
+        ['№', 'Наименование', 'Ед. изм.', 'Общий объем', 'Цена', 'Объем по цене', 'Кол-во']
       ]
 
-      groupedDifferentPrices.forEach((item, idx) => {
-        // Строка с названием материала
-        diffPricesRows.push([
+      materialsGroupedDifferentPrices.forEach((item, idx) => {
+        // Строка с названием
+        diffMatPricesRows.push([
           idx + 1,
           item.name,
           item.unit,
@@ -456,7 +887,7 @@ function BSMPage() {
         ])
         // Варианты цен с отступом
         item.variants.forEach(variant => {
-          diffPricesRows.push([
+          diffMatPricesRows.push([
             '',
             '   → вариант цены:',
             '',
@@ -467,29 +898,77 @@ function BSMPage() {
           ])
         })
         // Пустая строка
-        diffPricesRows.push([])
+        diffMatPricesRows.push([])
       })
 
-      const wsDiff = XLSX.utils.aoa_to_sheet(diffPricesRows)
-      wsDiff['!merges'] = [
+      const wsDiffMat = XLSX.utils.aoa_to_sheet(diffMatPricesRows)
+      wsDiffMat['!merges'] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }
       ]
 
-      setColWidths(wsDiff, [5, 50, 10, 15, 15, 15, 10])
-      XLSX.utils.book_append_sheet(wb, wsDiff, 'Разные цены')
+      setColWidths(wsDiffMat, [5, 50, 10, 15, 15, 15, 8])
+      XLSX.utils.book_append_sheet(wb, wsDiffMat, 'Разные цены (мат.)')
     }
 
-    // 4. Лист "Разные ед. изм."
-    if (differentUnitsData.length > 0) {
-      const diffUnitsRows = [
-        ['ОШИБКИ В ЕДИНИЦАХ ИЗМЕРЕНИЯ'],
-        ['Обнаружено материалов с разными ед. изм.: ' + differentUnitsData.length],
+    // 5.1. Лист "Разные цены (раб.)" - только работы с разными ценами
+    if (worksGroupedDifferentPrices.length > 0) {
+      const diffWorkPricesRows = [
+        ['РАБОТЫ С РАЗНЫМИ РАСЦЕНКАМИ'],
+        ['Обнаружено позиций: ' + worksGroupedDifferentPrices.length],
         [],
-        ['№', 'Наименование материалов', 'Единица измерения', 'Объем', 'Кол-во поз.']
+        ['№', 'Наименование', 'Ед. изм.', 'Общий объем', 'Цена', 'Объем по цене', 'Кол-во']
       ]
 
-      differentUnitsData.forEach((item, idx) => {
+      worksGroupedDifferentPrices.forEach((item, idx) => {
+        // Строка с названием
+        diffWorkPricesRows.push([
+          idx + 1,
+          item.name,
+          item.unit,
+          item.totalVolume,
+          '',
+          '',
+          ''
+        ])
+        // Варианты цен с отступом
+        item.variants.forEach(variant => {
+          diffWorkPricesRows.push([
+            '',
+            '   → вариант цены:',
+            '',
+            '',
+            variant.price || 'Не указана',
+            variant.volume,
+            variant.count
+          ])
+        })
+        // Пустая строка
+        diffWorkPricesRows.push([])
+      })
+
+      const wsDiffWork = XLSX.utils.aoa_to_sheet(diffWorkPricesRows)
+      wsDiffWork['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }
+      ]
+
+      setColWidths(wsDiffWork, [5, 50, 10, 15, 15, 15, 8])
+      XLSX.utils.book_append_sheet(wb, wsDiffWork, 'Разные цены (раб.)')
+    }
+
+    // 6. Лист "Разные ед. изм."
+    // Объединяем данные материалов и работ для экспорта
+    const allDifferentUnitsData = [...materialsDifferentUnitsData, ...worksDifferentUnitsData]
+    if (allDifferentUnitsData.length > 0) {
+      const diffUnitsRows = [
+        ['ОШИБКИ В ЕДИНИЦАХ ИЗМЕРЕНИЯ'],
+        ['Обнаружено позиций с разными ед. изм.: ' + allDifferentUnitsData.length],
+        [],
+        ['№', 'Наименование', 'Единица измерения', 'Объем', 'Кол-во поз.']
+      ]
+
+      allDifferentUnitsData.forEach((item, idx) => {
         // Строка с названием материала
         diffUnitsRows.push([
           idx + 1,
@@ -596,25 +1075,98 @@ function BSMPage() {
       XLSX.utils.book_append_sheet(wb, wsComparison, 'Сравнение с снабжением')
     }
 
-    // 7. Лист "Сводка"
+    // 7. Лист "БСМ" - расценки от снабжения с объемами из файла
+    if (approvedRates.length > 0 && materialsData.length > 0) {
+      // Создаём карту объемов по названию материала (суммируем все объемы для одного названия)
+      const volumesByName = {}
+      materialsData.forEach(item => {
+        const key = item.name.trim().toLowerCase()
+        if (!volumesByName[key]) {
+          volumesByName[key] = {
+            name: item.name,
+            unit: item.unit,
+            totalVolume: 0
+          }
+        }
+        volumesByName[key].totalVolume = round2(volumesByName[key].totalVolume + item.totalVolume)
+      })
+
+      // Формируем данные для листа БСМ
+      const bsmRows = []
+      let bsmTotalSum = 0
+
+      approvedRates.forEach((rate, idx) => {
+        const key = rate.material_name.trim().toLowerCase()
+        const volumeData = volumesByName[key]
+        const volume = volumeData ? volumeData.totalVolume : 0
+        const sum = round2(volume * (rate.supply_price || 0))
+        bsmTotalSum = round2(bsmTotalSum + sum)
+
+        bsmRows.push([
+          idx + 1,
+          rate.material_name,
+          rate.unit || (volumeData ? volumeData.unit : ''),
+          volume || '',
+          rate.supply_price || '',
+          sum || '',
+          rate.notes || ''
+        ])
+      })
+
+      // Итоговая строка
+      bsmRows.push(['', '', '', '', 'ИТОГО:', bsmTotalSum, ''])
+
+      const bsmHeaders = ['№', 'Наименование материала', 'Ед. изм.', 'Объем', 'Расценка БСМ', 'Сумма', 'Примечание']
+
+      const wsBsm = XLSX.utils.aoa_to_sheet([
+        ['РАСЦЕНКИ ОТ СНАБЖЕНИЯ (БСМ)'],
+        ['Объект: ' + (objects.find(o => o.id === selectedObjectId)?.name || 'Не выбран')],
+        ['Позиций: ' + approvedRates.length + ' | Итого: ' + bsmTotalSum.toLocaleString('ru-RU')],
+        [],
+        bsmHeaders,
+        ...bsmRows
+      ])
+
+      wsBsm['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 6 } }
+      ]
+
+      setColWidths(wsBsm, [5, 50, 10, 12, 15, 18, 20])
+      XLSX.utils.book_append_sheet(wb, wsBsm, 'БСМ')
+    }
+
+    // 8. Лист "Сводка"
+    const filesListText = loadedFiles.map(f => f.name).join(', ')
     const summaryRows = [
-      ['СВОДКА ПО АНАЛИЗУ МАТЕРИАЛОВ'],
+      ['СВОДКА ПО АНАЛИЗУ МАТЕРИАЛОВ И РАБОТ'],
       [''],
       ['Дата формирования отчета:', new Date().toLocaleDateString('ru-RU') + ' ' + new Date().toLocaleTimeString('ru-RU')],
-      ['Исходный файл:', fileName],
+      ['Загруженные файлы:', filesListText],
+      ['Всего файлов:', loadedFiles.length],
       [''],
       ['СТАТИСТИКА', ''],
-      ['Исходных строк в файле:', stats.totalRows],
+      ['Исходных строк в файлах:', stats.totalRows],
       ['Уникальных позиций в сводной:', stats.uniqueLines],
+      ['Материалов:', stats.materialsCount],
+      ['Работ:', stats.worksCount],
       [''],
-      ['ВЫЯВЛЕННЫЕ ПРОБЛЕМЫ', ''],
-      ['Позиций без расценки:', stats.zeroPriceCount],
-      ['Материалов с разными ценами:', stats.differentPricesCount],
-      ['Материалов с разными ед. изм.:', stats.differentUnitsCount],
-      ...(comparisonStats ? [['Позиций нет в снабжении:', comparisonStats.notFoundCount]] : []),
+      ['ВЫЯВЛЕННЫЕ ПРОБЛЕМЫ (МАТЕРИАЛЫ)', ''],
+      ['Без расценки:', materialsStats?.zeroPriceCount || 0],
+      ['С разными ценами:', materialsStats?.differentPricesCount || 0],
+      ['С разными ед. изм.:', materialsStats?.differentUnitsCount || 0],
+      [''],
+      ['ВЫЯВЛЕННЫЕ ПРОБЛЕМЫ (РАБОТЫ)', ''],
+      ['Без расценки:', worksStats?.zeroPriceCount || 0],
+      ['С разными ценами:', worksStats?.differentPricesCount || 0],
+      ['С разными ед. изм.:', worksStats?.differentUnitsCount || 0],
+      ...(comparisonStats ? [[''], ['Позиций нет в снабжении:', comparisonStats.notFoundCount]] : []),
       [''],
       ['ИТОГИ', ''],
-      ['Общая сумма материалов:', totalSum],
+      ['Сумма материалов:', totalMaterialsSum],
+      ['Сумма работ:', totalWorksSum],
+      ['Общая сумма:', totalSum],
       ...(comparisonStats ? [
         [''],
         ['СРАВНЕНИЕ С ЦЕНАМИ ОТ СНАБЖЕНИЯ', ''],
@@ -638,11 +1190,19 @@ function BSMPage() {
     XLSX.writeFile(wb, `БСМ_отчет_${dateStr}.xlsx`)
   }
 
+  // Округление до сотых (2 знака после запятой)
+  const roundToHundredths = (num) => {
+    if (num === null || num === undefined || num === '') return 0
+    const parsed = parseFloat(num)
+    if (isNaN(parsed)) return 0
+    return Math.round(parsed * 100) / 100
+  }
+
   const formatNumber = (num) => {
     if (num === null || num === undefined || num === '') return '-'
     const parsed = parseFloat(num)
     if (isNaN(parsed)) return '-'
-    return parsed.toLocaleString('ru-RU', {
+    return roundToHundredths(parsed).toLocaleString('ru-RU', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })
@@ -663,33 +1223,61 @@ function BSMPage() {
           ref={fileInputRef}
           id="file-upload"
           className="file-input"
+          multiple
         />
         <label htmlFor="file-upload" className="file-label">
-          Выбрать файл
+          {loadedFiles.length > 0 ? 'Добавить файлы' : 'Выбрать файлы'}
         </label>
-        {fileName && (
-          <span className="file-name">{fileName}</span>
-        )}
         {pivotData.length > 0 && (
           <>
             <button onClick={handleExport} className="export-btn">
               Экспорт в Excel
             </button>
             <button onClick={handleClear} className="clear-btn">
-              Очистить
+              Очистить всё
             </button>
           </>
         )}
       </div>
 
+      {/* Список загруженных файлов */}
+      {loadedFiles.length > 0 && (
+        <div className="loaded-files-section">
+          <h3>Загруженные файлы ({loadedFiles.length})</h3>
+          <div className="loaded-files-list">
+            {loadedFiles.map((file, idx) => (
+              <div key={idx} className="loaded-file-item">
+                <span className="file-icon">📄</span>
+                <span className="file-info">
+                  <span className="file-name">{file.name}</span>
+                  <span className="file-rows">{file.rowCount} строк</span>
+                </span>
+                <button
+                  className="remove-file-btn"
+                  onClick={() => handleRemoveFile(file.name)}
+                  title="Удалить файл"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="expected-format">
         <strong>Ожидаемый формат столбцов:</strong>
         <ol>
-          <li>Наименование материалов</li>
+          <li><strong>КОД</strong> — тип позиции: <code>Р</code> (работа) или <code>мат.</code> (материал)</li>
+          <li>Наименование</li>
           <li>Ед. изм.</li>
           <li>Объем</li>
-          <li>Цена за ед. с учетом НДС</li>
+          <li>Цена материалов (с НДС)</li>
+          <li>Цена работ (с НДС)</li>
         </ol>
+        <p className="format-note">
+          Расчёт: для работ (тип Р) — объём × цена работ; для материалов — объём × цена материалов + объём × цена работ (если указана)
+        </p>
       </div>
 
       {isLoading && (
@@ -703,17 +1291,13 @@ function BSMPage() {
               <span className="card-value">{stats.totalRows}</span>
               <span className="card-label">Исходных строк</span>
             </div>
-            <div className="summary-card">
-              <span className="card-value">{stats.uniqueLines}</span>
-              <span className="card-label">Строк в сводной</span>
+            <div className="summary-card materials">
+              <span className="card-value">{stats.materialsCount}</span>
+              <span className="card-label">Материалы</span>
             </div>
-            <div className={`summary-card ${stats.zeroPriceCount > 0 ? 'warning' : ''}`}>
-              <span className="card-value">{stats.zeroPriceCount}</span>
-              <span className="card-label">Без расценки</span>
-            </div>
-            <div className={`summary-card ${stats.differentPricesCount > 0 ? 'alert' : ''}`}>
-              <span className="card-value">{stats.differentPricesCount}</span>
-              <span className="card-label">С разными ценами</span>
+            <div className="summary-card works">
+              <span className="card-value">{stats.worksCount}</span>
+              <span className="card-label">Работы</span>
             </div>
           </div>
         </div>
@@ -721,55 +1305,81 @@ function BSMPage() {
 
       {pivotData.length > 0 && (
         <div className="pivot-section">
-          <div className="tabs">
+          {/* Главные вкладки: Материалы / Работы */}
+          <div className="main-tabs">
+            <button
+              className={`main-tab ${mainTab === 'materials' ? 'active' : ''} tab-materials`}
+              onClick={() => { setMainTab('materials'); setActiveTab('all'); setExpandedItems({}); }}
+              title="Стоимость материалов (код 'мат.')"
+            >
+              Материалы
+              <span className="tab-count">{stats.materialsCount}</span>
+            </button>
+            <button
+              className={`main-tab ${mainTab === 'works' ? 'active' : ''} tab-works`}
+              onClick={() => { setMainTab('works'); setActiveTab('all'); setExpandedItems({}); }}
+              title="Все работы: монтаж материалов + работы (код 'Р')"
+            >
+              Работы
+              <span className="tab-count">{stats.worksCount}</span>
+            </button>
+          </div>
+
+          {/* Подвкладки анализа */}
+          <div className="tabs sub-tabs">
             <button
               className={`tab ${activeTab === 'all' ? 'active' : ''}`}
               onClick={() => setActiveTab('all')}
             >
-              Все материалы
-              <span className="tab-count">{stats.uniqueLines}</span>
+              Все {mainTab === 'materials' ? 'материалы' : 'работы'}
+              <span className="tab-count">{currentStats?.totalItems || 0}</span>
             </button>
             <button
-              className={`tab ${activeTab === 'zero' ? 'active' : ''} ${stats.zeroPriceCount > 0 ? 'warning' : ''}`}
+              className={`tab ${activeTab === 'zero' ? 'active' : ''} ${currentStats?.zeroPriceCount > 0 ? 'warning' : ''}`}
               onClick={() => setActiveTab('zero')}
             >
               Без расценки
-              <span className="tab-count">{stats.zeroPriceCount}</span>
+              <span className="tab-count">{currentStats?.zeroPriceCount || 0}</span>
             </button>
             <button
-              className={`tab ${activeTab === 'different' ? 'active' : ''} ${stats.differentPricesCount > 0 ? 'alert' : ''}`}
+              className={`tab ${activeTab === 'different' ? 'active' : ''} ${currentStats?.differentPricesCount > 0 ? 'alert' : ''}`}
               onClick={() => setActiveTab('different')}
             >
               Разные цены
-              <span className="tab-count">{stats.differentPricesCount}</span>
+              <span className="tab-count">{currentStats?.differentPricesCount || 0}</span>
             </button>
             <button
-              className={`tab ${activeTab === 'units' ? 'active' : ''} ${stats.differentUnitsCount > 0 ? 'error' : ''}`}
+              className={`tab ${activeTab === 'units' ? 'active' : ''} ${currentStats?.differentUnitsCount > 0 ? 'error' : ''}`}
               onClick={() => setActiveTab('units')}
             >
               Разные ед. изм.
-              <span className="tab-count">{stats.differentUnitsCount}</span>
+              <span className="tab-count">{currentStats?.differentUnitsCount || 0}</span>
             </button>
-            <button
-              className={`tab ${activeTab === 'compare' ? 'active' : ''} ${comparisonStats && comparisonStats.totalDifference !== 0 ? 'compare' : ''}`}
-              onClick={() => setActiveTab('compare')}
-            >
-              Сравнение с ценами от снабжения
-              {comparisonStats && (
-                <span className={`tab-count ${comparisonStats.totalDifference < 0 ? 'positive' : comparisonStats.totalDifference > 0 ? 'negative' : ''}`}>
-                  {formatNumber(comparisonStats.totalDifference)}
-                </span>
-              )}
-            </button>
-            <button
-              className={`tab ${activeTab === 'not_in_supply' ? 'active' : ''} ${comparisonStats && comparisonStats.notFoundCount > 0 ? 'warning' : ''}`}
-              onClick={() => setActiveTab('not_in_supply')}
-            >
-              Нет в снабжении
-              {comparisonStats && (
-                <span className="tab-count">{comparisonStats.notFoundCount}</span>
-              )}
-            </button>
+            {/* Сравнение с расценками только для материалов */}
+            {mainTab === 'materials' && (
+              <>
+                <button
+                  className={`tab ${activeTab === 'compare' ? 'active' : ''} ${comparisonStats && comparisonStats.totalDifference !== 0 ? 'compare' : ''}`}
+                  onClick={() => setActiveTab('compare')}
+                >
+                  Сравнение с ценами от снабжения
+                  {comparisonStats && (
+                    <span className={`tab-count ${comparisonStats.totalDifference < 0 ? 'positive' : comparisonStats.totalDifference > 0 ? 'negative' : ''}`}>
+                      {formatNumber(comparisonStats.totalDifference)}
+                    </span>
+                  )}
+                </button>
+                <button
+                  className={`tab ${activeTab === 'not_in_supply' ? 'active' : ''} ${comparisonStats && comparisonStats.notFoundCount > 0 ? 'warning' : ''}`}
+                  onClick={() => setActiveTab('not_in_supply')}
+                >
+                  Нет в снабжении
+                  {comparisonStats && (
+                    <span className="tab-count">{comparisonStats.notFoundCount}</span>
+                  )}
+                </button>
+              </>
+            )}
           </div>
 
           {activeTab === 'not_in_supply' ? (
@@ -956,11 +1566,11 @@ function BSMPage() {
             </div>
           ) : activeTab === 'units' ? (
             // Вкладка "Разные ед. изм." - ошибки
-            differentUnitsData.length === 0 ? (
+            currentDifferentUnitsData.length === 0 ? (
               <div className="empty-tab success">Все единицы измерения корректны</div>
             ) : (
               <div className="accordion-list">
-                {differentUnitsData.map((item, idx) => (
+                {currentDifferentUnitsData.map((item, idx) => (
                   <div key={idx} className={`accordion-item error-item ${expandedItems[`unit-${idx}`] ? 'expanded' : ''}`}>
                     <div
                       className="accordion-header error-header"
@@ -1003,15 +1613,15 @@ function BSMPage() {
             )
           ) : activeTab === 'different' ? (
             // Вкладка "Разные цены" - выпадающий список
-            groupedDifferentPrices.length === 0 ? (
-              <div className="empty-tab">Нет материалов с разными ценами</div>
+            currentGroupedDifferentPrices.length === 0 ? (
+              <div className="empty-tab">Нет {mainTab === 'materials' ? 'материалов' : 'работ'} с разными ценами</div>
             ) : (
               <div className="accordion-list">
-                {groupedDifferentPrices.map((item, idx) => {
-                  // Проверяем наличие расценки от снабжения
-                  const supplyRate = approvedRates.find(rate =>
+                {currentGroupedDifferentPrices.map((item, idx) => {
+                  // Проверяем наличие расценки от снабжения (только для материалов)
+                  const supplyRate = mainTab === 'materials' ? approvedRates.find(rate =>
                     rate.material_name.trim().toLowerCase() === item.name.trim().toLowerCase()
-                  )
+                  ) : null
                   const hasSupplyRate = !!supplyRate
 
                   return (
@@ -1026,7 +1636,7 @@ function BSMPage() {
                       <span className="accordion-num">{idx + 1}</span>
                       <span className="accordion-name">{item.name}</span>
                       <span className="accordion-unit">{item.unit}</span>
-                      {selectedObjectId && (
+                      {mainTab === 'materials' && selectedObjectId && (
                         <span className={`supply-rate-badge ${hasSupplyRate ? 'has-rate' : 'no-rate'}`} title={hasSupplyRate ? `Цена от снабжения: ${formatNumber(supplyRate.supply_price)}` : 'Нет в снабжении'}>
                           {hasSupplyRate ? `₽ ${formatNumber(supplyRate.supply_price)}` : 'Нет в снабж.'}
                         </span>
@@ -1071,7 +1681,8 @@ function BSMPage() {
             // Остальные вкладки - таблица
             filteredData.length === 0 ? (
               <div className="empty-tab">
-                {activeTab === 'zero' && 'Все позиции имеют расценки'}
+                {activeTab === 'zero' && `Все ${mainTab === 'materials' ? 'материалы' : 'работы'} имеют расценки`}
+                {activeTab === 'all' && `Нет ${mainTab === 'materials' ? 'материалов' : 'работ'}`}
               </div>
             ) : (
               <div className="table-container">
@@ -1079,52 +1690,56 @@ function BSMPage() {
                   <thead>
                     <tr>
                       <th className="col-num">№</th>
-                      <th className="col-name">Наименование материалов</th>
+                      <th className="col-name">Наименование</th>
                       <th className="col-unit">Ед. изм.</th>
-                      <th className="col-volume">Итого объем</th>
-                      <th className="col-price">Цена за ед. с НДС</th>
-                      {activeTab === 'all' && <th className="col-total">Итого сумма</th>}
-                      <th className="col-count">Кол-во поз.</th>
+                      <th className="col-volume">Объем</th>
+                      <th className="col-price">Цена</th>
+                      <th className="col-total">Сумма</th>
+                      <th className="col-count">Кол-во</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredData.map((item, idx) => (
-                      <tr
-                        key={idx}
-                        className={`
-                          ${item.isZeroPrice ? 'zero-price-row' : ''}
-                          ${item.hasDifferentPrices ? 'different-price-row' : ''}
-                        `}
-                      >
-                        <td className="col-num">{idx + 1}</td>
-                        <td className="col-name">{item.name}</td>
-                        <td className="col-unit">{item.unit}</td>
-                        <td className="col-volume">{formatNumber(item.totalVolume)}</td>
-                        <td className="col-price">
-                          {item.price ? formatNumber(item.price) : <span className="no-price">—</span>}
-                        </td>
-                        {activeTab === 'all' && (
-                          <td className="col-total">
-                            {item.price ? formatNumber(item.totalVolume * item.price) : <span className="no-price">—</span>}
+                    {filteredData.map((item, idx) => {
+                      // Для материалов - цена и сумма материалов, для работ - цена и сумма работ
+                      const price = mainTab === 'materials' ? item.priceMaterials : item.priceWorks
+                      const itemSum = round2(item.totalVolume * (price || 0))
+                      return (
+                        <tr
+                          key={idx}
+                          className={`
+                            ${item.isZeroPrice ? 'zero-price-row' : ''}
+                            ${item.hasDifferentPrices ? 'different-price-row' : ''}
+                          `}
+                        >
+                          <td className="col-num">{idx + 1}</td>
+                          <td className="col-name">{item.name}</td>
+                          <td className="col-unit">{item.unit}</td>
+                          <td className="col-volume">{formatNumber(item.totalVolume)}</td>
+                          <td className="col-price">
+                            {price ? formatNumber(price) : <span className="no-price">—</span>}
                           </td>
-                        )}
-                        <td className="col-count">{item.count}</td>
-                      </tr>
-                    ))}
+                          <td className="col-total">
+                            {itemSum ? formatNumber(itemSum) : <span className="no-price">—</span>}
+                          </td>
+                          <td className="col-count">{item.count}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
-                  {activeTab === 'all' && (
-                    <tfoot>
-                      <tr className="total-row">
-                        <td colSpan="5" className="total-label">ИТОГО:</td>
-                        <td className="col-total total-value">
-                          {formatNumber(
-                            filteredData.reduce((sum, item) => sum + (item.totalVolume * (item.price || 0)), 0)
-                          )}
-                        </td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  )}
+                  <tfoot>
+                    <tr className="total-row">
+                      <td colSpan="5" className="total-label">ИТОГО:</td>
+                      <td className="col-total total-value">
+                        {formatNumber(
+                          filteredData.reduce((sum, item) => {
+                            const price = mainTab === 'materials' ? item.priceMaterials : item.priceWorks
+                            return sum + round2(item.totalVolume * (price || 0))
+                          }, 0)
+                        )}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )

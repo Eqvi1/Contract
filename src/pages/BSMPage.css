@@ -104,6 +104,24 @@
   margin: 4px 0;
 }
 
+.expected-format code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.format-note {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(99, 102, 241, 0.1);
+  border-left: 3px solid #6366f1;
+  border-radius: 0 4px 4px 0;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
 .loading {
   text-align: center;
   padding: 40px;
@@ -142,6 +160,24 @@
   background: rgba(239, 68, 68, 0.1);
 }
 
+.summary-card.materials {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.summary-card.materials .card-value {
+  color: #3b82f6;
+}
+
+.summary-card.works {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.summary-card.works .card-value {
+  color: #8b5cf6;
+}
+
 .card-value {
   font-size: 28px;
   font-weight: 700;
@@ -165,6 +201,76 @@
 
 .pivot-section {
   margin-top: 24px;
+}
+
+/* Главные вкладки: Материалы / Работы */
+.main-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 4px;
+  width: fit-content;
+}
+
+.main-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 28px;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.main-tab:hover {
+  color: var(--text-primary);
+}
+
+.main-tab.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.main-tab.active.tab-materials {
+  color: #3b82f6;
+}
+
+.main-tab.active.tab-works {
+  color: #8b5cf6;
+}
+
+.main-tab .tab-count {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+.main-tab.active .tab-count {
+  background: var(--primary-color);
+  color: white;
+}
+
+.main-tab.active.tab-materials .tab-count {
+  background: #3b82f6;
+}
+
+.main-tab.active.tab-works .tab-count {
+  background: #8b5cf6;
+}
+
+/* Подвкладки */
+.sub-tabs {
+  flex-wrap: wrap;
 }
 
 /* Вкладки */
@@ -214,6 +320,16 @@
 
 .tab.error .tab-count {
   background: #dc2626;
+  color: white;
+}
+
+.tab.tab-materials .tab-count {
+  background: #3b82f6;
+  color: white;
+}
+
+.tab.tab-works .tab-count {
+  background: #8b5cf6;
   color: white;
 }
 
@@ -332,6 +448,29 @@
 
 .col-note {
   min-width: 200px;
+}
+
+.col-type {
+  width: 60px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.type-work {
+  color: #8b5cf6;
+}
+
+.type-material {
+  color: #3b82f6;
+}
+
+/* Строки по типу */
+.work-row td.col-type {
+  color: #8b5cf6;
+}
+
+.material-row td.col-type {
+  color: #3b82f6;
 }
 
 .col-all-prices {
@@ -764,4 +903,103 @@
   font-size: 11px;
   min-width: auto;
   padding: 0 6px;
+}
+
+/* === Секция загруженных файлов === */
+.loaded-files-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.loaded-files-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.loaded-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.loaded-file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.loaded-file-item:hover {
+  border-color: var(--primary-color);
+}
+
+.loaded-file-item .file-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.loaded-file-item .file-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.loaded-file-item .file-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.loaded-file-item .file-rows {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.remove-file-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.remove-file-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+/* Адаптивность для списка файлов */
+@media (min-width: 768px) {
+  .loaded-files-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .loaded-file-item {
+    max-width: 320px;
+  }
 }
