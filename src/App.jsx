@@ -16,6 +16,7 @@ import BSMPage from './pages/BSMPage'
 import BSMRatesPage from './pages/BSMRatesPage'
 import BSMContractRatesPage from './pages/BSMContractRatesPage'
 import BSMComparisonPage from './pages/BSMComparisonPage'
+import BSMContractorRatesPage from './pages/BSMContractorRatesPage'
 import './App.css'
 
 // Компонент для защищённых маршрутов сотрудника
@@ -58,6 +59,7 @@ function EmployeeLayout() {
           <Route path="/bsm/comparison" element={<BSMComparisonPage />} />
           <Route path="/bsm/contract-rates" element={<BSMContractRatesPage />} />
           <Route path="/bsm/supply-rates" element={<BSMRatesPage />} />
+          <Route path="/bsm/contractor-rates" element={<BSMContractorRatesPage />} />
           <Route path="/acceptance" element={<AcceptancePage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="*" element={<Navigate to="/general/objects" replace />} />

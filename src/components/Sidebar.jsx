@@ -38,6 +38,7 @@ function Sidebar() {
     { path: '/bsm/comparison', label: 'Сравнение расценок', icon: '⚖️' },
     { path: '/bsm/contract-rates', label: 'Согласованные расценки', icon: '📝' },
     { path: '/bsm/supply-rates', label: 'Расценки от снабжения', icon: '📦' },
+    { path: '/bsm/contractor-rates', label: 'БСМ с подрядчиком', icon: '🤝' },
   ]
 
   const generalInfoSubItems = [

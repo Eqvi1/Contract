@@ -19,6 +19,17 @@
   margin-bottom: 24px;
 }
 
+.object-selector.dual-selector {
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.selector-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .object-selector label {
   color: var(--text-primary);
   font-weight: 500;
