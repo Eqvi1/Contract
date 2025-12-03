@@ -44,6 +44,27 @@ function BSMPage() {
   // Вспомогательная функция округления до сотых (2 знака после запятой)
   const round2 = (num) => Math.round((parseFloat(num) || 0) * 100) / 100
 
+  // Функция очистки числовых значений от пробелов, символов валют и форматирования
+  const cleanNumericValue = (value) => {
+    if (value === null || value === undefined || value === '') return 0
+    // Если уже число - возвращаем как есть
+    if (typeof value === 'number') return value
+    // Преобразуем в строку
+    let str = String(value)
+    // Удаляем символы валют (₽, $, €, руб., р., USD, EUR и т.д.)
+    str = str.replace(/[₽$€¥£]/g, '')
+    str = str.replace(/\s*(руб\.?|р\.?|rub\.?|usd|eur|тыс\.?|млн\.?)\s*/gi, '')
+    // Удаляем все пробелы (включая неразрывные)
+    str = str.replace(/[\s\u00A0\u2007\u202F]/g, '')
+    // Заменяем запятую на точку (для десятичных дробей)
+    str = str.replace(',', '.')
+    // Удаляем все символы кроме цифр, точки и минуса
+    str = str.replace(/[^\d.\-]/g, '')
+    // Парсим число
+    const num = parseFloat(str)
+    return isNaN(num) ? 0 : num
+  }
+
   // Загрузка объектов при монтировании
   useEffect(() => {
     fetchObjects()
@@ -490,9 +511,9 @@ function BSMPage() {
               type: itemType,
               name: row[1] || '',
               unit: row[2] || '',
-              volume: row[3] || 0,
-              priceMaterials: row[4] || 0,
-              priceWorks: row[5] || 0,
+              volume: cleanNumericValue(row[3]),
+              priceMaterials: cleanNumericValue(row[4]),
+              priceWorks: cleanNumericValue(row[5]),
               sourceFile: file.name // для отслеживания источника
             })
           }

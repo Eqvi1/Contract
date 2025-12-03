@@ -45,12 +45,14 @@ src/
 
 ### Role-Based Access
 
-Two roles: `employee` (full access) and `contractor` (proposals only)
+Two roles stored in `localStorage('userRole')`: `employee` (full access) and `contractor` (proposals only). This is app-level role selection, not Supabase Auth.
 
 ```javascript
 import { useRole } from './contexts/RoleContext'
-const { isEmployee, isContractor, logout } = useRole()
+const { isEmployee, isContractor, isLoggedIn, logout } = useRole()
 ```
+
+A `useSupabase` hook exists in `src/supabase/hooks.js` for Supabase Auth integration (session management) but is currently unused - roles are managed via localStorage.
 
 ### Routing (App.jsx)
 
@@ -59,8 +61,10 @@ const { isEmployee, isContractor, logout } = useRole()
 - `/general/objects|contacts|counterparties` - General info (employees)
 - `/tenders/construction|warranty` - Tender lists by department
 - `/tenders/:tenderId` - Tender detail with estimates
-- `/contracts/{department}/{status}` - Contract registry
-- `/bsm/analysis|comparison|contract-rates|supply-rates|contractor-rates` - Material management
+- `/contracts/{department}/{status}` - Contract registry (department: construction|warranty, status: pending|signed)
+- `/bsm/analysis|comparison|contract-rates|supply-rates|contractor-rates` - Material management (БСМ)
+- `/acceptance` - Acceptance page (placeholder)
+- `/reports` - Reports page (placeholder)
 
 ### Theming
 
@@ -115,9 +119,14 @@ const { data } = await supabase
 
 ### Schema Files
 
-- `supabase/schemas/prod.sql` - Full production schema
-- `supabase/schemas/*.sql` - Individual table schemas
-- `supabase/migrations/` - Chronological migrations
+- `supabase/schemas/prod.sql` - Full production schema (large, includes all Supabase system tables)
+- `supabase/schemas/*.sql` - Individual table schemas (preferred for reading/editing):
+  - `general_info.sql` - objects, contacts tables
+  - `counterparties.sql`, `counterparty_contacts.sql` - Contractor directory
+  - `tenders.sql`, `tender_counterparties.sql`, `tender_estimates.sql` - Tender system
+  - `contracts.sql` - Contract registry
+  - `bsm_contract_rates.sql`, `bsm_supply_rates.sql`, `bsm_contractor_rates.sql` - Material rates
+- `supabase/migrations/` - Chronological migrations for schema changes
 
 ## Excel Import/Export (xlsx)
 
@@ -161,3 +170,7 @@ const [expanded, setExpanded] = useState(location.pathname.startsWith('/section'
 Several pages use props for filtering:
 - `TendersPage` - `department` prop ('construction' | 'warranty')
 - `ContractsPage` - `department` and `status` props
+
+### Protected Routes
+
+`EmployeeLayout` component in `App.jsx` wraps all employee routes. It checks `isLoggedIn` and `isEmployee` from RoleContext, redirecting unauthorized users to `/login` or `/contractor/proposals`.
