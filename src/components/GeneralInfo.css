@@ -638,3 +638,87 @@
     min-width: 0;
   }
 }
+
+/* Status filter tabs */
+.status-filter-tabs {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.status-filter-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1.5rem;
+  border-radius: 10px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 2px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.status-filter-tab:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background-color: var(--bg-secondary);
+}
+
+.status-filter-tab.active {
+  border-color: var(--primary-color);
+  background-color: rgba(8, 145, 178, 0.1);
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.status-filter-tab .tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.status-filter-tab.active .tab-count {
+  background-color: rgba(8, 145, 178, 0.15);
+  color: var(--primary-color);
+}
+
+/* Dark theme для табов фильтра */
+[data-theme='dark'] .status-filter-tab {
+  border-color: var(--border-color-dark);
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .status-filter-tab:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+[data-theme='dark'] .status-filter-tab.active {
+  border-color: var(--primary-color);
+  background-color: rgba(8, 145, 178, 0.2);
+  color: var(--primary-color);
+}
+
+@media (max-width: 768px) {
+  .status-filter-tabs {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .status-filter-tab {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    justify-content: center;
+  }
+}

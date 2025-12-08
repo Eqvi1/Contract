@@ -28,6 +28,9 @@ function ObjectsPage() {
     status: 'main_construction',
   })
 
+  // Фильтр по статусу
+  const [statusFilter, setStatusFilter] = useState('main_construction')
+
   useEffect(() => {
     fetchObjects()
   }, [])
@@ -360,6 +363,28 @@ function ObjectsPage() {
         <div className="loading">Загрузка...</div>
       ) : (
         <div className="section-content">
+          {/* Фильтр по статусу */}
+          <div className="status-filter-tabs">
+            <button
+              className={`status-filter-tab ${statusFilter === 'main_construction' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('main_construction')}
+            >
+              🏗️ Основное строительство
+              <span className="tab-count">
+                {objects.filter(obj => (obj.status || 'main_construction') === 'main_construction').length}
+              </span>
+            </button>
+            <button
+              className={`status-filter-tab ${statusFilter === 'warranty_service' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('warranty_service')}
+            >
+              🛠️ Гарантийное обслуживание
+              <span className="tab-count">
+                {objects.filter(obj => obj.status === 'warranty_service').length}
+              </span>
+            </button>
+          </div>
+
           <div className="section-actions">
             <button className="btn-primary" onClick={handleAddNewObject}>
               + Добавить объект
@@ -391,32 +416,28 @@ function ObjectsPage() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th style={{ width: '60px' }}>№ п/п</th>
                   <th>Название объекта</th>
                   <th>Адрес</th>
-                  <th>Статус</th>
                   <th>Ссылка на карту</th>
                   <th className="actions-column">Действия</th>
                 </tr>
               </thead>
               <tbody>
-                {objects.length === 0 ? (
+                {objects.filter(obj => (obj.status || 'main_construction') === statusFilter).length === 0 ? (
                   <tr>
                     <td colSpan="5" className="no-data">
-                      Нет объектов. Добавьте первый объект.
+                      Нет объектов с выбранным статусом.
                     </td>
                   </tr>
                 ) : (
-                  objects.map((object) => (
+                  objects
+                    .filter(obj => (obj.status || 'main_construction') === statusFilter)
+                    .map((object, index) => (
                     <tr key={object.id}>
+                      <td style={{ textAlign: 'center', fontWeight: '600' }}>{index + 1}</td>
                       <td>{object.name}</td>
                       <td>{object.address}</td>
-                      <td>
-                        <span className={`status-badge status-${object.status || 'main_construction'}`}>
-                          {(object.status || 'main_construction') === 'warranty_service'
-                            ? 'Гарантийное обслуживание'
-                            : 'Основное строительство'}
-                        </span>
-                      </td>
                       <td>
                         {object.map_link ? (
                           <a

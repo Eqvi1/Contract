@@ -702,6 +702,88 @@
   font-family: monospace;
 }
 
+/* Строка с минимальной ценой */
+.min-price-row {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.min-price-row:hover {
+  background: rgba(16, 185, 129, 0.15) !important;
+}
+
+.min-price-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  background: #10b981;
+  color: white;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* Блок расчёта экономии */
+.savings-calculation {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  border-left: 4px solid #10b981;
+}
+
+.savings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.savings-row:last-child {
+  border-bottom: none;
+}
+
+.savings-label {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.savings-value {
+  font-family: monospace;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.savings-total {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 2px solid var(--border-color);
+  border-bottom: none;
+}
+
+.savings-total .savings-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.savings-total .savings-value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.savings-value.positive {
+  color: #10b981;
+}
+
+.savings-value.negative {
+  color: #ef4444;
+}
+
 /* Элементы с ошибками (разные ед. изм.) */
 .error-item {
   border-color: #dc2626;

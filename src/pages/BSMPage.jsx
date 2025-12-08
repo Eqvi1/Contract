@@ -1231,7 +1231,7 @@ function BSMPage() {
 
   return (
     <div className="bsm-page">
-      <h1>БСМ и материалы</h1>
+      <h1>Анализ КП</h1>
       <p className="page-description">
         Загрузите Excel-файл для создания сводной таблицы по материалам
       </p>
@@ -1645,6 +1645,17 @@ function BSMPage() {
                   ) : null
                   const hasSupplyRate = !!supplyRate
 
+                  // Расчёт потенциальной экономии
+                  // Минимальная цена (исключая нулевые)
+                  const nonZeroPrices = item.variants.filter(v => v.price > 0).map(v => v.price)
+                  const minPrice = nonZeroPrices.length > 0 ? Math.min(...nonZeroPrices) : 0
+                  // Текущая фактическая сумма (сумма всех: цена × объём)
+                  const currentTotalSum = round2(item.variants.reduce((sum, v) => sum + round2(v.price * v.volume), 0))
+                  // Сумма при минимальной цене
+                  const minPriceSum = round2(item.totalVolume * minPrice)
+                  // Потенциальная экономия
+                  const potentialSavings = round2(currentTotalSum - minPriceSum)
+
                   return (
                   <div key={idx} className={`accordion-item ${expandedItems[idx] ? 'expanded' : ''}`}>
                     <div
@@ -1676,21 +1687,41 @@ function BSMPage() {
                             <tr>
                               <th>Цена за ед. с НДС</th>
                               <th>Объем</th>
+                              <th>Сумма</th>
                               <th>Кол-во позиций</th>
                             </tr>
                           </thead>
                           <tbody>
                             {item.variants.map((variant, vIdx) => (
-                              <tr key={vIdx} className={variant.price === 0 ? 'zero-price-row' : ''}>
+                              <tr key={vIdx} className={`${variant.price === 0 ? 'zero-price-row' : ''} ${variant.price === minPrice && minPrice > 0 ? 'min-price-row' : ''}`}>
                                 <td>
                                   {variant.price ? formatNumber(variant.price) : <span className="no-price">Не указана</span>}
+                                  {variant.price === minPrice && minPrice > 0 && <span className="min-price-badge">мин</span>}
                                 </td>
                                 <td>{formatNumber(variant.volume)}</td>
+                                <td>{formatNumber(round2(variant.price * variant.volume))}</td>
                                 <td>{variant.count}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
+                        {/* Блок расчёта экономии */}
+                        {minPrice > 0 && potentialSavings > 0 && (
+                          <div className="savings-calculation">
+                            <div className="savings-row">
+                              <span className="savings-label">Текущая сумма (факт):</span>
+                              <span className="savings-value">{formatNumber(currentTotalSum)}</span>
+                            </div>
+                            <div className="savings-row">
+                              <span className="savings-label">Сумма при мин. цене ({formatNumber(minPrice)} × {formatNumber(item.totalVolume)}):</span>
+                              <span className="savings-value">{formatNumber(minPriceSum)}</span>
+                            </div>
+                            <div className="savings-row savings-total">
+                              <span className="savings-label">Потенциальная экономия:</span>
+                              <span className="savings-value positive">{formatNumber(potentialSavings)}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

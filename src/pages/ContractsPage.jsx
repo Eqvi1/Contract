@@ -2,11 +2,15 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import '../components/ContractRegistry.css'
 
-function ContractRegistry({ department = 'construction', status = 'pending' }) {
+function ContractRegistry() {
+  // Состояние для выбора отдела и статуса
+  const [department, setDepartment] = useState(null) // null = не выбран, 'construction' | 'warranty'
+  const [status, setStatus] = useState('pending') // 'pending' | 'signed'
+
   const [contracts, setContracts] = useState([])
   const [objects, setObjects] = useState([])
   const [counterparties, setCounterparties] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editingContract, setEditingContract] = useState(null)
   const [showTenderModal, setShowTenderModal] = useState(false)
@@ -29,14 +33,13 @@ function ContractRegistry({ department = 'construction', status = 'pending' }) {
 
   // Определяем статус объекта в зависимости от отдела
   const objectStatus = department === 'construction' ? 'main_construction' : 'warranty_service'
-  const departmentLabel = department === 'construction' ? 'Основное строительство' : 'Гарантийный отдел'
-  const statusLabel = status === 'pending' ? 'На согласовании' : 'Заключенные ДП'
-  const pageTitle = `Договоры — ${departmentLabel} — ${statusLabel}`
 
   useEffect(() => {
-    fetchContracts()
-    fetchObjects()
-    fetchCounterparties()
+    if (department) {
+      fetchContracts()
+      fetchObjects()
+      fetchCounterparties()
+    }
   }, [department, status])
 
   const fetchContracts = async () => {
@@ -207,13 +210,6 @@ function ContractRegistry({ department = 'construction', status = 'pending' }) {
     return new Date(dateString).toLocaleDateString('ru-RU')
   }
 
-  const formatAmount = (amount) => {
-    if (!amount) return ''
-    return new Intl.NumberFormat('ru-RU', {
-      style: 'currency',
-      currency: 'RUB',
-    }).format(amount)
-  }
 
   const handleViewTender = async (tenderId) => {
     if (!tenderId) return
@@ -282,19 +278,86 @@ function ContractRegistry({ department = 'construction', status = 'pending' }) {
     return colors[status] || '#64748b'
   }
 
-  if (loading) {
-    return <div className="loading">Загрузка...</div>
+  // Выбор отдела
+  const handleSelectDepartment = (dept) => {
+    setDepartment(dept)
+    setStatus('pending') // Сбрасываем статус на "На согласовании" при смене отдела
+    setContracts([])
   }
+
+  // Возврат к выбору отдела
+  const handleBackToDepartments = () => {
+    setDepartment(null)
+    setContracts([])
+    setObjects([])
+  }
+
+  // Экран выбора отдела
+  if (!department) {
+    return (
+      <div className="contract-registry">
+        <div className="registry-header">
+          <h2>Договоры</h2>
+        </div>
+
+        <div className="department-selection">
+          <p className="selection-label">Выберите отдел:</p>
+          <div className="department-cards">
+            <button
+              className="department-card"
+              onClick={() => handleSelectDepartment('construction')}
+            >
+              <span className="department-icon">🏗️</span>
+              <span className="department-name">Основное строительство</span>
+            </button>
+            <button
+              className="department-card"
+              onClick={() => handleSelectDepartment('warranty')}
+            >
+              <span className="department-icon">🛡️</span>
+              <span className="department-name">Гарантийный отдел</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const departmentLabel = department === 'construction' ? 'Основное строительство' : 'Гарантийный отдел'
 
   return (
     <div className="contract-registry">
       <div className="registry-header">
-        <h2>{pageTitle}</h2>
+        <div className="header-left">
+          <button className="btn-back" onClick={handleBackToDepartments} title="Назад к выбору отдела">
+            ←
+          </button>
+          <h2>Договоры — {departmentLabel}</h2>
+        </div>
         <button className="btn-primary" onClick={handleAddNew}>
           + Добавить договор
         </button>
       </div>
 
+      {/* Табы статуса */}
+      <div className="status-tabs">
+        <button
+          className={`status-tab ${status === 'pending' ? 'active' : ''}`}
+          onClick={() => setStatus('pending')}
+        >
+          На согласовании
+        </button>
+        <button
+          className={`status-tab ${status === 'signed' ? 'active' : ''}`}
+          onClick={() => setStatus('signed')}
+        >
+          Заключенные ДП
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="loading">Загрузка...</div>
+      ) : (
       <div className="table-container">
         <table className="contracts-table">
           <thead>
@@ -384,6 +447,7 @@ function ContractRegistry({ department = 'construction', status = 'pending' }) {
           </tbody>
         </table>
       </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
@@ -550,7 +614,7 @@ function ContractRegistry({ department = 'construction', status = 'pending' }) {
       )}
 
       {/* Модальное окно информации о тендере */}
-      {showTenderModal && (
+      {showTenderModal && department && (
         <div className="modal-overlay" onClick={() => {
           setShowTenderModal(false)
           setSelectedTenderInfo(null)

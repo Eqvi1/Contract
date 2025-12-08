@@ -15,20 +15,25 @@
 }
 
 .btn-back {
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 1.25rem;
   transition: all 0.2s;
-  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-back:hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
 }
 
 .tender-detail-title {
@@ -315,26 +320,49 @@
   background: var(--bg-tertiary);
 }
 
-.estimate-table.full-estimate .col-num {
+/* Checkbox column */
+.estimate-table.full-estimate .col-checkbox {
   left: 0;
+  min-width: 40px;
+  width: 40px;
+  text-align: center;
+}
+
+.estimate-table.full-estimate .col-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.estimate-table.full-estimate .col-num {
+  left: 40px;
   min-width: 50px;
   width: 50px;
 }
 
 .estimate-table.full-estimate .col-code {
-  left: 50px;
+  left: 90px;
   min-width: 80px;
 }
 
 .estimate-table.full-estimate .col-type {
-  left: 130px;
+  left: 170px;
   min-width: 120px;
 }
 
 .estimate-table.full-estimate .col-name {
-  left: 250px;
+  left: 170px;
   min-width: 200px;
   max-width: 300px;
+}
+
+/* Selected row highlight */
+.estimate-table.full-estimate tbody tr.selected-row {
+  background: var(--primary-color-light, rgba(59, 130, 246, 0.1)) !important;
+}
+
+.estimate-table.full-estimate tbody tr.selected-row:hover {
+  background: var(--primary-color-light, rgba(59, 130, 246, 0.15)) !important;
 }
 
 .estimate-table.full-estimate .col-actions {
@@ -728,6 +756,73 @@
   font-weight: 500;
 }
 
+/* Upload Options in Modal */
+.upload-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.upload-option {
+  padding: 1.25rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+.upload-option.recommended {
+  background: rgba(8, 145, 178, 0.05);
+  border-color: var(--primary-color);
+}
+
+.upload-option-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.option-badge {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0.25rem 0.5rem;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 4px;
+}
+
+.upload-option h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.upload-option-desc {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.upload-option-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.upload-btn {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.upload-btn input[type="file"] {
+  display: none;
+}
+
 /* Dark theme adjustments */
 [data-theme='dark'] .status-badge.status-not-started {
   background: #78350f;
@@ -903,6 +998,86 @@
   outline: none;
   border-color: var(--primary-color);
   box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.1);
+}
+
+.form-hint {
+  display: block;
+  margin-top: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+}
+
+/* Price Template Section */
+.price-template-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.analysis-stats {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.analysis-stats .stat-item {
+  flex: 1;
+  min-width: 120px;
+  padding: 1rem 1.25rem;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.analysis-stats .stat-item.highlight {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.analysis-stats .stat-value {
+  display: block;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.analysis-stats .stat-item.highlight .stat-value {
+  color: #22c55e;
+}
+
+.analysis-stats .stat-label {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+.template-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.template-actions .btn-primary {
+  font-size: 1rem;
+  padding: 0.75rem 1.5rem;
+}
+
+.action-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .analysis-stats .stat-item.highlight {
+  background: rgba(34, 197, 94, 0.15);
+}
+
+[data-theme='dark'] .analysis-stats .stat-item.highlight .stat-value {
+  color: #4ade80;
 }
 
 [data-theme='dark'] .form-group input,
@@ -1259,4 +1434,509 @@
 
 [data-theme='dark'] .import-instruction .instruction-table td.required {
   background: rgba(239, 68, 68, 0.15);
+}
+
+/* ========== Source Data Tab (Исходные данные) ========== */
+.source-data-section {
+  padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.source-data-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.source-data-card-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.source-data-card-header h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  color: var(--text-primary);
+}
+
+.source-data-description {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.source-data-card-content {
+  padding: 1.5rem;
+}
+
+/* Template Section */
+.template-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.template-file {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+.template-file .file-icon {
+  font-size: 2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.template-file .file-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.template-file .file-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+}
+
+.template-file .file-size {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+}
+
+.template-file .file-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.no-template {
+  text-align: center;
+  padding: 2rem 1rem;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border: 2px dashed var(--border-color);
+}
+
+.no-template p {
+  margin: 0 0 1rem;
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+}
+
+/* Documents Section */
+.documents-upload-area {
+  margin-bottom: 1.5rem;
+}
+
+.empty-documents {
+  text-align: center;
+  padding: 2rem 1rem;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border: 2px dashed var(--border-color);
+}
+
+.empty-documents p {
+  margin: 0 0 0.5rem;
+  color: var(--text-secondary);
+}
+
+.empty-documents .hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+}
+
+.documents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.document-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  transition: all 0.2s;
+}
+
+.document-item:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.document-item .doc-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.document-item .doc-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.document-item .doc-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.document-item .doc-size {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.document-item .doc-url,
+.template-file .file-url {
+  font-size: 0.75rem;
+  color: var(--primary-color);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-item .doc-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Icon Action Buttons */
+.btn-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.btn-icon-action:hover {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  transform: scale(1.05);
+}
+
+.btn-icon-action.btn-delete-doc:hover {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+
+/* Danger Button */
+.btn-danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+/* Dark theme adjustments for source data */
+[data-theme='dark'] .source-data-card {
+  background: var(--bg-tertiary);
+}
+
+[data-theme='dark'] .document-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* ========== Multiple Estimates (Множественные сметы) ========== */
+
+/* Список смет */
+.estimates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+/* Карточка сметы */
+.estimate-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.estimate-card:hover {
+  border-color: var(--primary-color);
+}
+
+/* Заголовок карточки сметы */
+.estimate-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.estimate-card-header:hover {
+  background: var(--hover-bg);
+}
+
+.estimate-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.expand-icon {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  width: 1rem;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.estimate-card-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.estimate-count {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  padding: 0.125rem 0.5rem;
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.estimate-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  margin-left: 1rem;
+}
+
+/* Контент карточки сметы */
+.estimate-card-content {
+  border-top: 1px solid var(--border-color);
+  overflow-x: auto;
+}
+
+/* Компактная таблица сметы */
+.estimate-table.compact {
+  font-size: 0.8125rem;
+}
+
+.estimate-table.compact th,
+.estimate-table.compact td {
+  padding: 0.5rem 0.75rem;
+}
+
+.estimate-table.compact th {
+  background: var(--bg-tertiary);
+  font-size: 0.75rem;
+}
+
+.estimate-table.compact .col-checkbox {
+  width: 40px;
+  min-width: 40px;
+  text-align: center;
+}
+
+.estimate-table.compact .col-checkbox input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.estimate-table.compact .col-name-compact {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.estimate-table.compact tbody tr.selected-row {
+  background: rgba(8, 145, 178, 0.08);
+}
+
+.estimate-table.compact tbody tr.selected-row:hover {
+  background: rgba(8, 145, 178, 0.12);
+}
+
+/* Маленькая кнопка с иконкой */
+.btn-icon-small {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.btn-icon-small:hover {
+  background: var(--hover-bg);
+  border-color: var(--primary-color);
+  transform: scale(1.05);
+}
+
+/* Модал названия сметы */
+.estimate-name-modal {
+  max-width: 450px;
+}
+
+.estimate-name-modal .modal-content {
+  padding: 1.5rem 2rem;
+}
+
+.estimate-name-modal .form-group {
+  margin-top: 1rem;
+}
+
+.estimate-name-modal .form-group input {
+  width: 100%;
+  font-size: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+/* Описание в модале */
+.modal-description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+/* Предупреждающее сообщение */
+.warning-message {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  color: #b45309;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+[data-theme='dark'] .warning-message {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+/* Dark theme для карточек смет */
+[data-theme='dark'] .estimate-card {
+  background: var(--bg-tertiary);
+}
+
+[data-theme='dark'] .estimate-card-header {
+  background: var(--bg-secondary);
+}
+
+[data-theme='dark'] .estimate-table.compact tbody tr.selected-row {
+  background: rgba(8, 145, 178, 0.15);
+}
+
+[data-theme='dark'] .estimate-table.compact tbody tr.selected-row:hover {
+  background: rgba(8, 145, 178, 0.2);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .source-data-section {
+    padding: 1rem;
+  }
+
+  .source-data-card-header {
+    padding: 1rem;
+  }
+
+  .source-data-card-content {
+    padding: 1rem;
+  }
+
+  .template-file {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .template-file .file-actions {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .document-item {
+    flex-wrap: wrap;
+  }
+
+  .document-item .doc-actions {
+    width: 100%;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+  }
+
+  .estimates-list {
+    padding: 1rem;
+  }
+
+  .estimate-card-header {
+    padding: 0.875rem 1rem;
+  }
+
+  .estimate-card-header h4 {
+    font-size: 0.9375rem;
+  }
+
+  .estimate-header-actions {
+    margin-left: 0.5rem;
+  }
 }

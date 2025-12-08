@@ -17,6 +17,8 @@ import BSMRatesPage from './pages/BSMRatesPage'
 import BSMContractRatesPage from './pages/BSMContractRatesPage'
 import BSMComparisonPage from './pages/BSMComparisonPage'
 import BSMContractorRatesPage from './pages/BSMContractorRatesPage'
+import GeneralInfoPage from './pages/GeneralInfoPage'
+import BSMSelectionPage from './pages/BSMSelectionPage'
 import './App.css'
 
 // Компонент для защищённых маршрутов сотрудника
@@ -38,8 +40,8 @@ function EmployeeLayout() {
       <Sidebar />
       <main className="main-content">
         <Routes>
-          <Route path="/" element={<Navigate to="/general/objects" replace />} />
-          <Route path="/general" element={<Navigate to="/general/objects" replace />} />
+          <Route path="/" element={<Navigate to="/general" replace />} />
+          <Route path="/general" element={<GeneralInfoPage />} />
           <Route path="/general/objects" element={<ObjectsPage />} />
           <Route path="/general/contacts" element={<ContactsPage />} />
           <Route path="/general/counterparties" element={<CounterpartiesPage />} />
@@ -47,22 +49,16 @@ function EmployeeLayout() {
           <Route path="/tenders/construction" element={<TendersPage department="construction" />} />
           <Route path="/tenders/warranty" element={<TendersPage department="warranty" />} />
           <Route path="/tenders/:tenderId" element={<TenderDetailPage />} />
-          <Route path="/contracts" element={<Navigate to="/contracts/construction/pending" replace />} />
-          <Route path="/contracts/construction" element={<Navigate to="/contracts/construction/pending" replace />} />
-          <Route path="/contracts/construction/pending" element={<ContractsPage department="construction" status="pending" />} />
-          <Route path="/contracts/construction/signed" element={<ContractsPage department="construction" status="signed" />} />
-          <Route path="/contracts/warranty" element={<Navigate to="/contracts/warranty/pending" replace />} />
-          <Route path="/contracts/warranty/pending" element={<ContractsPage department="warranty" status="pending" />} />
-          <Route path="/contracts/warranty/signed" element={<ContractsPage department="warranty" status="signed" />} />
-          <Route path="/bsm" element={<Navigate to="/bsm/analysis" replace />} />
-          <Route path="/bsm/analysis" element={<BSMPage />} />
+          <Route path="/analysis-kp" element={<BSMPage />} />
+          <Route path="/contracts" element={<ContractsPage />} />
+          <Route path="/bsm" element={<BSMSelectionPage />} />
           <Route path="/bsm/comparison" element={<BSMComparisonPage />} />
           <Route path="/bsm/contract-rates" element={<BSMContractRatesPage />} />
           <Route path="/bsm/supply-rates" element={<BSMRatesPage />} />
           <Route path="/bsm/contractor-rates" element={<BSMContractorRatesPage />} />
           <Route path="/acceptance" element={<AcceptancePage />} />
           <Route path="/reports" element={<ReportsPage />} />
-          <Route path="*" element={<Navigate to="/general/objects" replace />} />
+          <Route path="*" element={<Navigate to="/general" replace />} />
         </Routes>
       </main>
     </div>
@@ -80,7 +76,7 @@ function AuthRoutes() {
         path="/login"
         element={
           isLoggedIn
-            ? <Navigate to={isEmployee ? "/general/objects" : "/contractor/proposals"} replace />
+            ? <Navigate to={isEmployee ? "/general" : "/contractor/proposals"} replace />
             : <LoginPage />
         }
       />

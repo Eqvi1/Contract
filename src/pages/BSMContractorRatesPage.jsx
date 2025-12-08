@@ -5,14 +5,29 @@ import './BSMRatesPage.css'
 import './BSMPage.css'
 
 function BSMContractorRatesPage() {
-  // Главная вкладка
+  // Режим отображения: 'list' - список БСМ, 'detail' - детальный просмотр расценок
+  const [viewMode, setViewMode] = useState('list')
+
+  // Главная вкладка (для режима detail)
   const [mainTab, setMainTab] = useState('rates') // 'rates' | 'analysis'
+
+  // ========== Список существующих БСМ ==========
+  const [existingBsmList, setExistingBsmList] = useState([])
+  const [bsmListLoading, setBsmListLoading] = useState(true)
+  const [showAddBsmModal, setShowAddBsmModal] = useState(false)
+  const [newBsmObjectId, setNewBsmObjectId] = useState('')
+  const [newBsmCounterpartyId, setNewBsmCounterpartyId] = useState('')
+  const [bsmSearchTerm, setBsmSearchTerm] = useState('')
+  const [bsmFilterObject, setBsmFilterObject] = useState('')
+  const [bsmFilterCounterparty, setBsmFilterCounterparty] = useState('')
 
   // ========== Общие данные ==========
   const [objects, setObjects] = useState([])
   const [counterparties, setCounterparties] = useState([])
   const [selectedObjectId, setSelectedObjectId] = useState('')
   const [selectedCounterpartyId, setSelectedCounterpartyId] = useState('')
+  const [selectedObjectName, setSelectedObjectName] = useState('')
+  const [selectedCounterpartyName, setSelectedCounterpartyName] = useState('')
 
   // ========== Данные для вкладки "Расценки" ==========
   const [rates, setRates] = useState([])
@@ -55,7 +70,47 @@ function BSMContractorRatesPage() {
   useEffect(() => {
     fetchObjects()
     fetchCounterparties()
+    fetchExistingBsmList()
   }, [])
+
+  // Загрузка списка существующих БСМ (уникальные комбинации объект + подрядчик)
+  const fetchExistingBsmList = async () => {
+    setBsmListLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('bsm_contractor_rates')
+        .select(`
+          object_id,
+          counterparty_id,
+          objects(id, name),
+          counterparties(id, name)
+        `)
+
+      if (error) throw error
+
+      // Группируем по уникальным комбинациям object_id + counterparty_id
+      const uniqueMap = new Map()
+      data.forEach(item => {
+        const key = `${item.object_id}_${item.counterparty_id}`
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, {
+            object_id: item.object_id,
+            counterparty_id: item.counterparty_id,
+            object_name: item.objects?.name || 'Неизвестный объект',
+            counterparty_name: item.counterparties?.name || 'Неизвестный подрядчик',
+            rates_count: 1
+          })
+        } else {
+          uniqueMap.get(key).rates_count++
+        }
+      })
+
+      setExistingBsmList(Array.from(uniqueMap.values()))
+    } catch (err) {
+      console.error('Ошибка загрузки списка БСМ:', err)
+    }
+    setBsmListLoading(false)
+  }
 
   useEffect(() => {
     if (selectedObjectId && selectedCounterpartyId) {
@@ -99,6 +154,76 @@ function BSMContractorRatesPage() {
       .order('material_name')
     if (!error && data) setRates(data)
     setIsLoading(false)
+  }
+
+  // ========== Функции для работы со списком БСМ ==========
+  const handleSelectBsm = (bsm) => {
+    setSelectedObjectId(bsm.object_id)
+    setSelectedCounterpartyId(bsm.counterparty_id)
+    setSelectedObjectName(bsm.object_name)
+    setSelectedCounterpartyName(bsm.counterparty_name)
+    setViewMode('detail')
+  }
+
+  const handleBackToList = () => {
+    setViewMode('list')
+    setSelectedObjectId('')
+    setSelectedCounterpartyId('')
+    setSelectedObjectName('')
+    setSelectedCounterpartyName('')
+    setRates([])
+    setMainTab('rates')
+    // Обновим список БСМ
+    fetchExistingBsmList()
+  }
+
+  const handleAddNewBsm = async () => {
+    if (!newBsmObjectId || !newBsmCounterpartyId) {
+      alert('Выберите объект и подрядчика')
+      return
+    }
+
+    // Проверим, не существует ли уже такая комбинация
+    const exists = existingBsmList.some(
+      b => b.object_id === newBsmObjectId && b.counterparty_id === newBsmCounterpartyId
+    )
+    if (exists) {
+      alert('БСМ для этой комбинации объект + подрядчик уже существует')
+      return
+    }
+
+    // Находим названия
+    const objName = objects.find(o => o.id === newBsmObjectId)?.name || ''
+    const cpName = counterparties.find(c => c.id === newBsmCounterpartyId)?.name || ''
+
+    // Переходим к детальному просмотру (расценки можно будет добавить там)
+    setSelectedObjectId(newBsmObjectId)
+    setSelectedCounterpartyId(newBsmCounterpartyId)
+    setSelectedObjectName(objName)
+    setSelectedCounterpartyName(cpName)
+    setShowAddBsmModal(false)
+    setNewBsmObjectId('')
+    setNewBsmCounterpartyId('')
+    setViewMode('detail')
+  }
+
+  const handleDeleteBsm = async (objectId, counterpartyId) => {
+    const objName = existingBsmList.find(b => b.object_id === objectId && b.counterparty_id === counterpartyId)?.object_name
+    const cpName = existingBsmList.find(b => b.object_id === objectId && b.counterparty_id === counterpartyId)?.counterparty_name
+
+    if (!confirm(`Удалить все расценки БСМ для объекта "${objName}" и подрядчика "${cpName}"?`)) return
+
+    const { error } = await supabase
+      .from('bsm_contractor_rates')
+      .delete()
+      .eq('object_id', objectId)
+      .eq('counterparty_id', counterpartyId)
+
+    if (error) {
+      alert('Ошибка удаления: ' + error.message)
+    } else {
+      fetchExistingBsmList()
+    }
   }
 
   // ========== Функции для расценок ==========
@@ -629,47 +754,256 @@ function BSMContractorRatesPage() {
   }
 
   // ========== RENDER ==========
+
+  // Фильтрация списка БСМ
+  const filteredBsmList = existingBsmList.filter(bsm => {
+    const searchLower = bsmSearchTerm.toLowerCase()
+    const matchesSearch = !bsmSearchTerm ||
+      bsm.object_name.toLowerCase().includes(searchLower) ||
+      bsm.counterparty_name.toLowerCase().includes(searchLower)
+    const matchesObject = !bsmFilterObject || bsm.object_id === bsmFilterObject
+    const matchesCounterparty = !bsmFilterCounterparty || bsm.counterparty_id === bsmFilterCounterparty
+    return matchesSearch && matchesObject && matchesCounterparty
+  })
+
+  // Уникальные объекты и подрядчики для фильтров
+  const uniqueObjectsInBsm = [...new Map(existingBsmList.map(b => [b.object_id, { id: b.object_id, name: b.object_name }])).values()]
+  const uniqueCounterpartiesInBsm = [...new Map(existingBsmList.map(b => [b.counterparty_id, { id: b.counterparty_id, name: b.counterparty_name }])).values()]
+
+  // Режим списка БСМ
+  if (viewMode === 'list') {
+    return (
+      <div className="bsm-rates-page bsm-list-page">
+        <div className="bsm-list-header">
+          <div className="bsm-list-header-content">
+            <div className="bsm-list-title-section">
+              <h1>БСМ с подрядчиком</h1>
+              <p className="page-description">
+                Ведомость стоимости материалов по подрядчикам
+              </p>
+            </div>
+            <button className="btn-add-bsm" onClick={() => setShowAddBsmModal(true)}>
+              <span className="btn-icon-plus">+</span>
+              <span>Добавить БСМ</span>
+            </button>
+          </div>
+
+          {/* Статистика */}
+          <div className="bsm-stats-row">
+            <div className="bsm-stat-card">
+              <span className="stat-icon">📋</span>
+              <div className="stat-info">
+                <span className="stat-value">{existingBsmList.length}</span>
+                <span className="stat-label">Всего БСМ</span>
+              </div>
+            </div>
+            <div className="bsm-stat-card">
+              <span className="stat-icon">🏢</span>
+              <div className="stat-info">
+                <span className="stat-value">{uniqueObjectsInBsm.length}</span>
+                <span className="stat-label">Объектов</span>
+              </div>
+            </div>
+            <div className="bsm-stat-card">
+              <span className="stat-icon">🤝</span>
+              <div className="stat-info">
+                <span className="stat-value">{uniqueCounterpartiesInBsm.length}</span>
+                <span className="stat-label">Подрядчиков</span>
+              </div>
+            </div>
+            <div className="bsm-stat-card">
+              <span className="stat-icon">📊</span>
+              <div className="stat-info">
+                <span className="stat-value">{existingBsmList.reduce((sum, b) => sum + b.rates_count, 0)}</span>
+                <span className="stat-label">Позиций</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Панель поиска и фильтров */}
+        <div className="bsm-search-panel">
+          <div className="search-input-wrapper">
+            <span className="search-icon">🔍</span>
+            <input
+              type="text"
+              placeholder="Поиск по объекту или подрядчику..."
+              value={bsmSearchTerm}
+              onChange={(e) => setBsmSearchTerm(e.target.value)}
+              className="bsm-search-input"
+            />
+            {bsmSearchTerm && (
+              <button className="clear-search" onClick={() => setBsmSearchTerm('')}>×</button>
+            )}
+          </div>
+          <div className="bsm-filters">
+            <div className="filter-group">
+              <label>Объект:</label>
+              <select
+                value={bsmFilterObject}
+                onChange={(e) => setBsmFilterObject(e.target.value)}
+                className="filter-select"
+              >
+                <option value="">Все объекты</option>
+                {uniqueObjectsInBsm.map(obj => (
+                  <option key={obj.id} value={obj.id}>{obj.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-group">
+              <label>Подрядчик:</label>
+              <select
+                value={bsmFilterCounterparty}
+                onChange={(e) => setBsmFilterCounterparty(e.target.value)}
+                className="filter-select"
+              >
+                <option value="">Все подрядчики</option>
+                {uniqueCounterpartiesInBsm.map(cp => (
+                  <option key={cp.id} value={cp.id}>{cp.name}</option>
+                ))}
+              </select>
+            </div>
+            {(bsmFilterObject || bsmFilterCounterparty || bsmSearchTerm) && (
+              <button
+                className="btn-clear-filters"
+                onClick={() => {
+                  setBsmSearchTerm('')
+                  setBsmFilterObject('')
+                  setBsmFilterCounterparty('')
+                }}
+              >
+                Сбросить фильтры
+              </button>
+            )}
+          </div>
+        </div>
+
+        {bsmListLoading ? (
+          <div className="loading">Загрузка списка БСМ...</div>
+        ) : existingBsmList.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">📦</div>
+            <p>Нет созданных БСМ с подрядчиками</p>
+            <p className="empty-hint">Нажмите «Добавить БСМ» чтобы создать новую ведомость</p>
+          </div>
+        ) : filteredBsmList.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">🔍</div>
+            <p>Ничего не найдено</p>
+            <p className="empty-hint">Попробуйте изменить параметры поиска или фильтра</p>
+          </div>
+        ) : (
+          <div className="bsm-table-container">
+            <div className="table-info">
+              Показано: <strong>{filteredBsmList.length}</strong> из <strong>{existingBsmList.length}</strong>
+            </div>
+            <table className="bsm-list-table">
+              <thead>
+                <tr>
+                  <th className="col-number">№</th>
+                  <th className="col-object">Объект</th>
+                  <th className="col-counterparty">Контрагент</th>
+                  <th className="col-count">Позиций</th>
+                  <th className="col-actions">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBsmList.map((bsm, index) => (
+                  <tr
+                    key={`${bsm.object_id}_${bsm.counterparty_id}`}
+                    className="bsm-list-row"
+                    onClick={() => handleSelectBsm(bsm)}
+                  >
+                    <td className="col-number">{index + 1}</td>
+                    <td className="col-object">{bsm.object_name}</td>
+                    <td className="col-counterparty">{bsm.counterparty_name}</td>
+                    <td className="col-count">
+                      <span className="count-badge">{bsm.rates_count}</span>
+                    </td>
+                    <td className="col-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="btn-action btn-view"
+                        onClick={() => handleSelectBsm(bsm)}
+                        title="Открыть"
+                      >
+                        👁️
+                      </button>
+                      <button
+                        className="btn-action btn-delete"
+                        onClick={() => handleDeleteBsm(bsm.object_id, bsm.counterparty_id)}
+                        title="Удалить"
+                      >
+                        🗑️
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Модалка добавления БСМ */}
+        {showAddBsmModal && (
+          <div className="modal-overlay" onClick={() => setShowAddBsmModal(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Добавить БСМ с подрядчиком</h3>
+                <button className="modal-close" onClick={() => setShowAddBsmModal(false)}>×</button>
+              </div>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label>Объект *</label>
+                  <select
+                    value={newBsmObjectId}
+                    onChange={(e) => setNewBsmObjectId(e.target.value)}
+                  >
+                    <option value="">-- Выберите объект --</option>
+                    {objects.map(obj => (
+                      <option key={obj.id} value={obj.id}>{obj.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Подрядчик *</label>
+                  <select
+                    value={newBsmCounterpartyId}
+                    onChange={(e) => setNewBsmCounterpartyId(e.target.value)}
+                  >
+                    <option value="">-- Выберите подрядчика --</option>
+                    {counterparties.map(cp => (
+                      <option key={cp.id} value={cp.id}>{cp.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn-secondary" onClick={() => setShowAddBsmModal(false)}>Отмена</button>
+                <button className="btn-primary" onClick={handleAddNewBsm}>Создать</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Режим детального просмотра расценок
   return (
     <div className="bsm-rates-page">
-      <h1>БСМ с подрядчиком</h1>
-      <p className="page-description">
-        Расценки на материалы по конкретному подрядчику для объекта
-      </p>
-
-      {/* Селекторы объекта и подрядчика */}
-      <div className="object-selector dual-selector">
-        <div className="selector-group">
-          <label>Объект:</label>
-          <select
-            value={selectedObjectId}
-            onChange={(e) => {
-              setSelectedObjectId(e.target.value)
-              setSelectedRates(new Set())
-            }}
-          >
-            <option value="">-- Выберите объект --</option>
-            {objects.map(obj => (
-              <option key={obj.id} value={obj.id}>{obj.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="selector-group">
-          <label>Подрядчик:</label>
-          <select
-            value={selectedCounterpartyId}
-            onChange={(e) => {
-              setSelectedCounterpartyId(e.target.value)
-              setSelectedRates(new Set())
-            }}
-          >
-            <option value="">-- Выберите подрядчика --</option>
-            {counterparties.map(cp => (
-              <option key={cp.id} value={cp.id}>{cp.name}</option>
-            ))}
-          </select>
+      <div className="detail-header">
+        <button className="btn-back" onClick={handleBackToList} title="Назад к списку">
+          ←
+        </button>
+        <div className="detail-title">
+          <h1>БСМ с подрядчиком</h1>
+          <p className="page-description">
+            <strong>{selectedObjectName}</strong> — <strong>{selectedCounterpartyName}</strong>
+          </p>
         </div>
       </div>
 
+      {/* Заменили селекторы на информацию о выбранном БСМ */}
       {selectedObjectId && selectedCounterpartyId && (
         <>
           {/* Главные вкладки */}
@@ -916,7 +1250,7 @@ function BSMContractorRatesPage() {
                   {activeAnalysisTab === 'compare' ? (
                     <div className="compare-section">
                       {rates.length === 0 ? (
-                        <div className="empty-tab">Нет расценок подрядчика для сравнения. Добавьте расценки на вкладке "БСМ с подрядчиком".</div>
+                        <div className="empty-tab">Нет расценок подрядчика для сравнения. Добавьте расценки на вкладке &quot;БСМ с подрядчиком&quot;.</div>
                       ) : comparisonStats ? (
                         <>
                           <div className="comparison-summary">
@@ -992,7 +1326,7 @@ function BSMContractorRatesPage() {
                   ) : activeAnalysisTab === 'not_in_rates' ? (
                     <div className="compare-section">
                       {rates.length === 0 ? (
-                        <div className="empty-tab">Добавьте расценки на вкладке "БСМ с подрядчиком"</div>
+                        <div className="empty-tab">Добавьте расценки на вкладке &quot;БСМ с подрядчиком&quot;</div>
                       ) : comparisonStats && comparisonStats.notFoundCount > 0 ? (
                         <>
                           <div className="comparison-summary">

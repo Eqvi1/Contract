@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import * as XLSX from 'xlsx'
@@ -22,10 +22,22 @@ function TenderDetailPage() {
   const [showAddEstimateModal, setShowAddEstimateModal] = useState(false)
   const [showImportEstimateModal, setShowImportEstimateModal] = useState(false)
   const [editingEstimateItem, setEditingEstimateItem] = useState(null)
+  const [selectedEstimateItems, setSelectedEstimateItems] = useState(new Set())
+
+  // Состояния для множественных смет
+  const [expandedEstimates, setExpandedEstimates] = useState(new Set(['Основная смета']))
+
+  // Состояния для документов тендера (исходные данные) - ссылки на Google Drive
+  const [tenderDocuments, setTenderDocuments] = useState([])
+  const [estimateTemplate, setEstimateTemplate] = useState(null)
+  const [showAddDocumentModal, setShowAddDocumentModal] = useState(false)
+  const [addingDocumentType, setAddingDocumentType] = useState('attachment') // 'attachment' или 'estimate_template'
+  const [documentFormData, setDocumentFormData] = useState({ name: '', url: '' })
+  const [savingDocument, setSavingDocument] = useState(false)
+
   const [estimateFormData, setEstimateFormData] = useState({
     row_number: '',
     code: '',
-    cost_type: '',
     cost_name: '',
     calculation_note: '',
     unit: '',
@@ -37,6 +49,7 @@ function TenderDetailPage() {
     if (tenderId) {
       fetchTenderData()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenderId])
 
   const fetchTenderData = async () => {
@@ -110,6 +123,20 @@ function TenderDetailPage() {
         setProposalFiles(filesData || [])
       }
 
+      // Загружаем документы тендера (исходные данные)
+      const { data: docsData, error: docsError } = await supabase
+        .from('tender_documents')
+        .select('*')
+        .eq('tender_id', tenderId)
+        .order('created_at', { ascending: false })
+
+      if (!docsError) {
+        setTenderDocuments(docsData || [])
+        // Находим шаблон сметы
+        const template = docsData?.find(d => d.document_type === 'estimate_template')
+        setEstimateTemplate(template || null)
+      }
+
     } catch (error) {
       console.error('Ошибка загрузки данных тендера:', error.message)
       alert('Ошибка загрузки данных: ' + error.message)
@@ -125,7 +152,6 @@ function TenderDetailPage() {
     setEstimateFormData({
       row_number: nextRowNumber,
       code: '',
-      cost_type: '',
       cost_name: '',
       calculation_note: '',
       unit: '',
@@ -140,7 +166,6 @@ function TenderDetailPage() {
     setEstimateFormData({
       row_number: item.row_number,
       code: item.code || '',
-      cost_type: item.cost_type || '',
       cost_name: item.cost_name || '',
       calculation_note: item.calculation_note || '',
       unit: item.unit || '',
@@ -154,11 +179,19 @@ function TenderDetailPage() {
   const handleSaveEstimateItem = async (e) => {
     e.preventDefault()
     try {
+      // Автоопределение типа затрат по коду
+      let costType = null
+      const code = estimateFormData.code?.trim()
+      if (code) {
+        if (code.toLowerCase().startsWith('мат')) costType = 'Материалы'
+        else if (code.toUpperCase().startsWith('Р')) costType = 'Работы'
+      }
+
       const itemData = {
         tender_id: tenderId,
         row_number: parseInt(estimateFormData.row_number),
-        code: estimateFormData.code || null,
-        cost_type: estimateFormData.cost_type || null,
+        code: code || null,
+        cost_type: costType,
         cost_name: estimateFormData.cost_name,
         calculation_note: estimateFormData.calculation_note || null,
         unit: estimateFormData.unit || null,
@@ -195,10 +228,397 @@ function TenderDetailPage() {
         .delete()
         .eq('id', itemId)
       if (error) throw error
+      setSelectedEstimateItems(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(itemId)
+        return newSet
+      })
       fetchTenderData()
     } catch (error) {
       console.error('Ошибка удаления:', error.message)
       alert('Ошибка удаления: ' + error.message)
+    }
+  }
+
+  // Функции для множественного выбора и удаления позиций сметы
+  const handleToggleSelectItem = (itemId) => {
+    setSelectedEstimateItems(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId)
+      } else {
+        newSet.add(itemId)
+      }
+      return newSet
+    })
+  }
+
+  const handleDeleteSelectedItems = async () => {
+    if (selectedEstimateItems.size === 0) return
+    if (!window.confirm(`Удалить ${selectedEstimateItems.size} выбранных позиций?`)) return
+
+    try {
+      const idsToDelete = Array.from(selectedEstimateItems)
+      const { error } = await supabase
+        .from('tender_estimate_items')
+        .delete()
+        .in('id', idsToDelete)
+      if (error) throw error
+      setSelectedEstimateItems(new Set())
+      fetchTenderData()
+      alert(`Удалено ${idsToDelete.length} позиций`)
+    } catch (error) {
+      console.error('Ошибка удаления:', error.message)
+      alert('Ошибка удаления: ' + error.message)
+    }
+  }
+
+  // ========== Функции для работы с документами тендера (ссылки Google Drive) ==========
+  const handleOpenAddDocument = (docType) => {
+    setAddingDocumentType(docType)
+    setDocumentFormData({ name: '', url: '' })
+    setShowAddDocumentModal(true)
+  }
+
+  const handleSaveDocument = async (e) => {
+    e.preventDefault()
+    if (!documentFormData.name.trim() || !documentFormData.url.trim()) {
+      alert('Заполните название и ссылку')
+      return
+    }
+
+    setSavingDocument(true)
+    try {
+      const { error } = await supabase
+        .from('tender_documents')
+        .insert({
+          tender_id: tenderId,
+          name: documentFormData.name.trim(),
+          url: documentFormData.url.trim(),
+          document_type: addingDocumentType
+        })
+
+      if (error) throw error
+
+      setShowAddDocumentModal(false)
+      fetchTenderData()
+    } catch (error) {
+      console.error('Ошибка сохранения документа:', error.message)
+      alert('Ошибка сохранения: ' + error.message)
+    } finally {
+      setSavingDocument(false)
+    }
+  }
+
+  const handleDeleteDocument = async (doc) => {
+    if (!window.confirm(`Удалить ссылку "${doc.name}"?`)) return
+
+    try {
+      const { error } = await supabase
+        .from('tender_documents')
+        .delete()
+        .eq('id', doc.id)
+
+      if (error) throw error
+      fetchTenderData()
+    } catch (error) {
+      console.error('Ошибка удаления:', error.message)
+      alert('Ошибка удаления: ' + error.message)
+    }
+  }
+
+  const getDocumentIcon = (url) => {
+    if (url.includes('drive.google.com')) return '📁'
+    if (url.includes('docs.google.com/spreadsheets')) return '📊'
+    if (url.includes('docs.google.com/document')) return '📝'
+    if (url.includes('docs.google.com/presentation')) return '📽️'
+    return '🔗'
+  }
+
+  // ========== Функции для работы с множественными сметами ==========
+
+  // Получить уникальные названия смет
+  const getEstimateNames = () => {
+    const names = new Set()
+    estimateItems.forEach(item => {
+      names.add(item.estimate_name || 'Основная смета')
+    })
+    return Array.from(names).sort()
+  }
+
+  // Получить позиции по названию сметы
+  const getItemsByEstimate = (estimateName) => {
+    return estimateItems.filter(item =>
+      (item.estimate_name || 'Основная смета') === estimateName
+    ).sort((a, b) => a.row_number - b.row_number)
+  }
+
+  // Переключить раскрытие/скрытие сметы
+  const toggleEstimateExpanded = (estimateName) => {
+    setExpandedEstimates(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(estimateName)) {
+        newSet.delete(estimateName)
+      } else {
+        newSet.add(estimateName)
+      }
+      return newSet
+    })
+  }
+
+  // Удалить всю смету
+  const handleDeleteEstimate = async (estimateName) => {
+    if (!window.confirm(`Удалить смету "${estimateName}" со всеми позициями?`)) return
+
+    try {
+      const itemsToDelete = estimateItems
+        .filter(item => (item.estimate_name || 'Основная смета') === estimateName)
+        .map(item => item.id)
+
+      if (itemsToDelete.length === 0) return
+
+      const { error } = await supabase
+        .from('tender_estimate_items')
+        .delete()
+        .in('id', itemsToDelete)
+
+      if (error) throw error
+      fetchTenderData()
+      alert(`Смета "${estimateName}" удалена`)
+    } catch (error) {
+      console.error('Ошибка удаления сметы:', error.message)
+      alert('Ошибка удаления: ' + error.message)
+    }
+  }
+
+  // ========== Функции для группировки позиций и генерации шаблона КП ==========
+
+  // Группировка позиций сметы по ключу (наименование) - для шаблона расценок
+  const getGroupedEstimateItems = () => {
+    const grouped = {}
+
+    estimateItems.forEach(item => {
+      // Ключ группировки: наименование затрат (объединяем одинаковые позиции)
+      const costName = item.cost_name?.trim() || ''
+      if (!costName) return // Пропускаем позиции без наименования
+
+      // Определяем тип позиции по коду: мат. = материалы, Р- = работы
+      const code = item.code?.trim() || ''
+      const isMaterial = code.toLowerCase().startsWith('мат')
+      const isWork = code.toUpperCase().startsWith('Р')
+      const itemType = isMaterial ? 'material' : (isWork ? 'work' : 'unknown')
+
+      // Ключ = наименование + тип (чтобы не смешивать материалы и работы с одинаковым названием)
+      const groupKey = `${costName}__${itemType}`
+
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = {
+          key: groupKey,
+          code: item.code,
+          cost_type: item.cost_type,
+          cost_name: costName,
+          unit: item.unit,
+          itemType: itemType, // 'material' или 'work'
+          total_volume: 0, // Объём (работ или расход материала)
+          items: [],
+          rowNumbers: []
+        }
+      }
+
+      // Суммируем объём в зависимости от типа
+      if (itemType === 'material') {
+        grouped[groupKey].total_volume += parseFloat(item.material_consumption) || 0
+      } else {
+        grouped[groupKey].total_volume += parseFloat(item.work_volume) || 0
+      }
+
+      grouped[groupKey].items.push(item)
+      grouped[groupKey].rowNumbers.push(item.row_number)
+    })
+
+    return Object.values(grouped).sort((a, b) => {
+      // Сортируем по первому номеру строки в группе
+      return Math.min(...a.rowNumbers) - Math.min(...b.rowNumbers)
+    })
+  }
+
+  // Генерация упрощённого шаблона для заполнения расценок
+  const handleDownloadPriceTemplate = () => {
+    const groupedItems = getGroupedEstimateItems()
+
+    if (groupedItems.length === 0) {
+      alert('Сначала загрузите смету')
+      return
+    }
+
+    // Заголовки шаблона:
+    // №, Тип, Наименование, Ед.изм., Объём, Цена за ед., Позиции в смете
+    const headers = [
+      '№ п/п',
+      'Тип',           // М = материал, Р = работа
+      'Наименование',
+      'Ед. изм.',
+      'Объём',
+      'Цена за ед. (заполнить)',  // ЗАПОЛНЯЕТ ПОДРЯДЧИК
+      'Позиции в смете'
+    ]
+
+    // Данные - уникальные позиции со сводными объёмами
+    // Числа передаём как числа (не строки), чтобы Excel корректно работал с формулами
+    const dataRows = groupedItems.map((group, idx) => {
+      const typeLabel = group.itemType === 'material' ? 'М' : (group.itemType === 'work' ? 'Р' : '?')
+      return [
+        idx + 1,
+        typeLabel,
+        group.cost_name || '',
+        group.unit || '',
+        group.total_volume || 0,  // Число, не строка - Excel сам отформатирует
+        null, // Цена - ЗАПОЛНЯЕТ ПОДРЯДЧИК
+        group.rowNumbers.join(', ')
+      ]
+    })
+
+    // Создаём Excel
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
+
+    // Ширина колонок
+    ws['!cols'] = [
+      { wch: 8 },   // № п/п
+      { wch: 6 },   // Тип
+      { wch: 55 },  // Наименование
+      { wch: 10 },  // Ед. изм.
+      { wch: 15 },  // Объём
+      { wch: 22 },  // Цена за ед.
+      { wch: 18 },  // Позиции в смете
+    ]
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Расценки')
+
+    const objectName = tender?.objects?.name || 'Тендер'
+    const fileName = `Расценки_${objectName.replace(/[^a-zA-Zа-яА-Я0-9]/g, '_')}.xlsx`
+    XLSX.writeFile(wb, fileName)
+  }
+
+  // Импорт заполненных расценок и распределение на все позиции
+  const handleImportPricesFromTemplate = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    try {
+      const reader = new FileReader()
+      reader.onload = async (event) => {
+        try {
+          const data = new Uint8Array(event.target.result)
+          const workbook = XLSX.read(data, { type: 'array' })
+          const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+
+          // Парсим расценки из шаблона
+          // Новая структура: 0-№, 1-Тип(М/Р), 2-Наименование, 3-Ед.изм., 4-Объем, 5-Цена, 6-Позиции
+          const priceMap = {} // key (наименование + тип) -> { price, type }
+
+          for (let i = 1; i < jsonData.length; i++) {
+            const row = jsonData[i]
+            if (!row || row.length < 6) continue
+
+            const typeLabel = row[1]?.toString().trim().toUpperCase() // М или Р
+            const costName = row[2]?.toString().trim()
+            const price = parseFloat(row[5]) || 0
+
+            if (!costName || price <= 0) continue
+
+            // Тип: М = материал, Р = работа
+            const itemType = typeLabel === 'М' ? 'material' : (typeLabel === 'Р' ? 'work' : 'unknown')
+            const key = `${costName}__${itemType}`
+
+            priceMap[key] = { price, itemType }
+          }
+
+          if (Object.keys(priceMap).length === 0) {
+            alert('Не найдены расценки в файле. Заполните колонку «Цена за ед.»')
+            return
+          }
+
+          // Формируем предложения для каждой позиции сметы
+          const proposalsToInsert = []
+
+          estimateItems.forEach(item => {
+            const costName = item.cost_name?.trim() || ''
+            const code = item.code?.trim() || ''
+            const isMaterial = code.toLowerCase().startsWith('мат')
+            const isWork = code.toUpperCase().startsWith('Р')
+            const itemType = isMaterial ? 'material' : (isWork ? 'work' : 'unknown')
+
+            const key = `${costName}__${itemType}`
+            const priceData = priceMap[key]
+
+            if (priceData) {
+              const workVolume = parseFloat(item.work_volume) || 0
+              const materialConsumption = parseFloat(item.material_consumption) || 0
+
+              // Расчёт в зависимости от типа позиции
+              let unitPriceMaterials = 0
+              let unitPriceWorks = 0
+              let totalMaterials = 0
+              let totalWorks = 0
+
+              if (priceData.itemType === 'material') {
+                unitPriceMaterials = priceData.price
+                totalMaterials = priceData.price * materialConsumption
+              } else {
+                unitPriceWorks = priceData.price
+                totalWorks = priceData.price * workVolume
+              }
+
+              const totalCost = totalMaterials + totalWorks
+
+              proposalsToInsert.push({
+                tender_id: tenderId,
+                counterparty_id: selectedCounterpartyForUpload,
+                estimate_item_id: item.id,
+                unit_price_materials: unitPriceMaterials,
+                unit_price_works: unitPriceWorks,
+                total_unit_price: unitPriceMaterials + unitPriceWorks,
+                total_materials: totalMaterials,
+                total_works: totalWorks,
+                total_cost: totalCost
+              })
+            }
+          })
+
+          if (proposalsToInsert.length === 0) {
+            alert('Не удалось сопоставить расценки с позициями сметы. Проверьте наименования.')
+            return
+          }
+
+          // Удаляем старые предложения этого контрагента для этого тендера
+          await supabase
+            .from('tender_counterparty_proposals')
+            .delete()
+            .eq('tender_id', tenderId)
+            .eq('counterparty_id', selectedCounterpartyForUpload)
+
+          // Вставляем новые предложения
+          const { error } = await supabase
+            .from('tender_counterparty_proposals')
+            .insert(proposalsToInsert)
+
+          if (error) throw error
+
+          setShowUploadModal(false)
+          fetchTenderData()
+          alert(`Импортировано расценок для ${proposalsToInsert.length} из ${estimateItems.length} позиций`)
+
+        } catch (parseError) {
+          console.error('Ошибка парсинга:', parseError)
+          alert('Ошибка чтения файла: ' + parseError.message)
+        }
+      }
+      reader.readAsArrayBuffer(file)
+    } catch (error) {
+      console.error('Ошибка импорта:', error)
+      alert('Ошибка импорта: ' + error.message)
     }
   }
 
@@ -323,9 +743,22 @@ function TenderDetailPage() {
     }
   }
 
+  // Импорт сметы из Excel - название берётся из имени файла
   const handleImportEstimateFromExcel = async (e) => {
     const file = e.target.files[0]
     if (!file) return
+
+    // Название сметы = имя файла без расширения
+    const estimateName = file.name.replace(/\.(xlsx|xls)$/i, '').trim() || 'Новая смета'
+    const existingEstimate = getEstimateNames().includes(estimateName)
+
+    // Если смета с таким именем существует - спрашиваем
+    if (existingEstimate) {
+      if (!window.confirm(`Смета "${estimateName}" уже существует. Заменить её?`)) {
+        e.target.value = ''
+        return
+      }
+    }
 
     try {
       const reader = new FileReader()
@@ -339,41 +772,79 @@ function TenderDetailPage() {
 
           // Парсим смету из Excel
           const itemsToInsert = []
+
+          // Находим максимальный row_number среди ВСЕХ существующих позиций тендера
+          // (кроме позиций сметы, которую заменяем)
+          const existingItems = existingEstimate
+            ? estimateItems.filter(item => (item.estimate_name || 'Основная смета') !== estimateName)
+            : estimateItems
+
+          const maxExistingRowNumber = existingItems.length > 0
+            ? Math.max(...existingItems.map(item => item.row_number))
+            : 0
+
+          // Нумерация новых позиций начинается после максимального существующего номера
+          let nextRowNumber = maxExistingRowNumber + 1
+
           for (let i = 1; i < jsonData.length; i++) {
             const row = jsonData[i]
             if (!row || row.length === 0) continue
 
-            const rowNumber = parseInt(row[0])
-            if (isNaN(rowNumber)) continue
+            const code = row[1]?.toString().trim()
+            if (!code) continue
+
+            const costName = row[2]?.toString().trim()
+            const rowNumber = nextRowNumber++
+
+            let costType = null
+            if (code.toLowerCase().startsWith('мат') || code.toLowerCase() === 'мат.') {
+              costType = 'Материалы'
+            } else if (code.toUpperCase().startsWith('Р') || code.toUpperCase().startsWith('Р-')) {
+              costType = 'Работы'
+            }
 
             itemsToInsert.push({
               tender_id: tenderId,
+              estimate_name: estimateName,  // Название сметы = имя файла
               row_number: rowNumber,
-              code: row[1] || null,
-              cost_type: row[2] || null,
-              cost_name: row[3] || '',
-              calculation_note: row[4] || null,
-              unit: row[5] || null,
-              work_volume: parseFloat(row[6]) || null,
-              material_consumption: parseFloat(row[7]) || null
+              code: code || null,
+              cost_type: costType,
+              cost_name: costName || '',
+              unit: row[3]?.toString().trim() || null,
+              work_volume: parseFloat(row[4]) || null,
+              material_consumption: parseFloat(row[5]) || null,
+              calculation_note: row[11]?.toString().trim() || null
             })
           }
 
           if (itemsToInsert.length > 0) {
-            // Удаляем старые позиции
-            await supabase
-              .from('tender_estimate_items')
-              .delete()
-              .eq('tender_id', tenderId)
+            // Удаляем старую смету с таким же названием (если есть)
+            if (existingEstimate) {
+              const oldItems = estimateItems
+                .filter(item => (item.estimate_name || 'Основная смета') === estimateName)
+                .map(item => item.id)
+              if (oldItems.length > 0) {
+                await supabase
+                  .from('tender_estimate_items')
+                  .delete()
+                  .in('id', oldItems)
+              }
+            }
 
-            // Вставляем новые
+            // Вставляем новые позиции
             const { error } = await supabase
               .from('tender_estimate_items')
               .insert(itemsToInsert)
 
             if (error) throw error
+
+            // Раскрываем добавленную смету
+            setExpandedEstimates(prev => new Set([...prev, estimateName]))
+
             fetchTenderData()
-            alert(`Импортировано ${itemsToInsert.length} позиций сметы`)
+            alert(`Импортировано ${itemsToInsert.length} позиций в смету "${estimateName}"`)
+          } else {
+            alert('Не найдено позиций для импорта. Проверьте структуру файла.')
           }
         } catch (parseError) {
           console.error('Ошибка парсинга:', parseError)
@@ -385,29 +856,37 @@ function TenderDetailPage() {
       console.error('Ошибка импорта:', error)
       alert('Ошибка импорта: ' + error.message)
     }
+
+    // Сбрасываем input для возможности повторного выбора того же файла
+    e.target.value = ''
   }
 
   const handleDownloadEstimateTemplate = () => {
-    // Создаем шаблон сметы
+    // Создаем шаблон сметы - структура A-L
     const templateData = [
-      ['№ п/п', 'КОД', 'Вид затрат', 'Наименование затрат', 'Примечание к расчету', 'Ед. изм.', 'Объем по виду работ', 'Общий расход по материалу'],
-      [1, 'МТР-001', 'Материалы', 'Пример: Кабель ВВГнг 3x2.5', 'Расчет по проекту', 'м', 100, 105],
-      [2, 'РАБ-001', 'Работы', 'Пример: Монтаж кабеля', 'По ведомости объемов', 'м', 100, ''],
-      [3, '', '', '', '', '', '', ''],
+      ['№ п/п', 'КОД', 'Наименование затрат', 'Ед. изм.', 'Объем по виду работ', 'Общий расход по материалу', 'Материалы/оборудование', 'СМР, ПНР', 'Итого материалы', 'Итого СМР', 'Общая стоимость', 'ПРИМЕЧАНИЯ'],
+      ['', 'мат.', 'Пример: Кабель ВВГнг 3x2.5', 'м', '', 105, '', '', '', '', '', ''],
+      [1, 'Р-001', 'Пример: Монтаж кабеля', 'м', 100, '', '', '', '', '', '', ''],
+      ['', 'мат.', 'Пример: Кабель-канал 40x25', 'м', '', 50, '', '', '', '', '', ''],
+      [2, 'Р-002', 'Пример: Монтаж кабель-канала', 'м', 50, '', '', '', '', '', '', ''],
     ]
 
     const ws = XLSX.utils.aoa_to_sheet(templateData)
 
-    // Устанавливаем ширину колонок
+    // Устанавливаем ширину колонок (A-L)
     ws['!cols'] = [
-      { wch: 8 },   // № п/п
-      { wch: 12 },  // КОД
-      { wch: 15 },  // Вид затрат
-      { wch: 40 },  // Наименование затрат
-      { wch: 25 },  // Примечание к расчету
-      { wch: 10 },  // Ед. изм.
-      { wch: 18 },  // Объем по виду работ
-      { wch: 22 },  // Общий расход по материалу
+      { wch: 8 },   // A: № п/п
+      { wch: 12 },  // B: КОД
+      { wch: 40 },  // C: Наименование затрат
+      { wch: 10 },  // D: Ед. изм.
+      { wch: 18 },  // E: Объем по виду работ
+      { wch: 22 },  // F: Общий расход по материалу
+      { wch: 20 },  // G: Материалы/оборудование (цена)
+      { wch: 18 },  // H: СМР, ПНР (цена)
+      { wch: 18 },  // I: Итого материалы
+      { wch: 15 },  // J: Итого СМР
+      { wch: 18 },  // K: Общая стоимость
+      { wch: 25 },  // L: ПРИМЕЧАНИЯ
     ]
 
     const wb = XLSX.utils.book_new()
@@ -562,8 +1041,8 @@ function TenderDetailPage() {
     <div className="tender-detail-page">
       {/* Шапка */}
       <div className="tender-detail-header">
-        <button className="btn-back" onClick={() => navigate(-1)}>
-          ← Назад к списку
+        <button className="btn-back" onClick={() => navigate(-1)} title="Назад к списку">
+          ←
         </button>
         <div className="tender-detail-title">
           <h2>{tender.objects?.name || 'Тендер'}</h2>
@@ -609,6 +1088,13 @@ function TenderDetailPage() {
       {/* Вкладки */}
       <div className="tender-tabs">
         <button
+          className={`tender-tab ${activeTab === 'source_data' ? 'active' : ''}`}
+          onClick={() => setActiveTab('source_data')}
+        >
+          Исходные данные
+          {tenderDocuments.length > 0 && <span className="tab-count">{tenderDocuments.length}</span>}
+        </button>
+        <button
           className={`tender-tab ${activeTab === 'estimate' ? 'active' : ''}`}
           onClick={() => setActiveTab('estimate')}
         >
@@ -632,156 +1118,302 @@ function TenderDetailPage() {
 
       {/* Контент вкладок */}
       <div className="tender-tab-content">
+        {/* Вкладка Исходные данные */}
+        {activeTab === 'source_data' && (
+          <div className="source-data-section">
+            {/* Шаблон сметы */}
+            <div className="source-data-card">
+              <div className="source-data-card-header">
+                <h3>📊 Шаблон сметы (Excel)</h3>
+                <p className="source-data-description">
+                  Ссылка на шаблон сметы в Google Drive. Подрядчик скачивает, заполняет расценки и отправляет обратно.
+                </p>
+              </div>
+              <div className="source-data-card-content">
+                {estimateTemplate ? (
+                  <div className="template-info">
+                    <div className="template-file">
+                      <span className="file-icon">{getDocumentIcon(estimateTemplate.url)}</span>
+                      <div className="file-details">
+                        <span className="file-name">{estimateTemplate.name}</span>
+                        <span className="file-size file-url">{estimateTemplate.url}</span>
+                      </div>
+                      <div className="file-actions">
+                        <a
+                          href={estimateTemplate.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-secondary"
+                        >
+                          Открыть
+                        </a>
+                        <button
+                          className="btn-danger"
+                          onClick={() => handleDeleteDocument(estimateTemplate)}
+                        >
+                          Удалить
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="no-template">
+                    <p>Ссылка на исходную смету не добавлена</p>
+                    <button
+                      className="btn-primary"
+                      onClick={() => handleOpenAddDocument('estimate_template')}
+                    >
+                      + Добавить ссылку на смету
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Шаблон расценок для подрядчика */}
+            <div className="source-data-card">
+              <div className="source-data-card-header">
+                <h3>📋 Шаблон расценок для подрядчика</h3>
+                <p className="source-data-description">
+                  Система анализирует смету, объединяет одинаковые позиции и генерирует упрощённый шаблон.
+                  Подрядчику нужно заполнить цены только для уникальных позиций.
+                </p>
+              </div>
+              <div className="source-data-card-content">
+                {estimateItems.length === 0 ? (
+                  <div className="no-template">
+                    <p>Сначала загрузите смету во вкладке «Смета»</p>
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setActiveTab('estimate')}
+                    >
+                      Перейти к смете
+                    </button>
+                  </div>
+                ) : (
+                  <div className="price-template-section">
+                    <div className="analysis-stats">
+                      <div className="stat-item">
+                        <span className="stat-value">{estimateItems.length}</span>
+                        <span className="stat-label">позиций в смете</span>
+                      </div>
+                      <div className="stat-item">
+                        <span className="stat-value">{getGroupedEstimateItems().length}</span>
+                        <span className="stat-label">уникальных позиций</span>
+                      </div>
+                      <div className="stat-item highlight">
+                        <span className="stat-value">
+                          {estimateItems.length - getGroupedEstimateItems().length}
+                        </span>
+                        <span className="stat-label">объединённых (экономия)</span>
+                      </div>
+                    </div>
+                    <div className="template-actions">
+                      <button
+                        className="btn-primary"
+                        onClick={handleDownloadPriceTemplate}
+                      >
+                        📥 Скачать шаблон расценок
+                      </button>
+                      <p className="action-hint">
+                        Отправьте этот файл подрядчикам. Они заполнят колонки «Цена материала» и «Цена работы»
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Документы для подрядчика */}
+            <div className="source-data-card">
+              <div className="source-data-card-header">
+                <h3>📎 Документы для подрядчика</h3>
+                <p className="source-data-description">
+                  Ссылки на чертежи, спецификации, ТЗ и другие материалы в Google Drive
+                </p>
+              </div>
+              <div className="source-data-card-content">
+                <div className="documents-upload-area">
+                  <button
+                    className="btn-primary"
+                    onClick={() => handleOpenAddDocument('attachment')}
+                  >
+                    + Добавить ссылку на документ
+                  </button>
+                </div>
+
+                {tenderDocuments.filter(d => d.document_type === 'attachment').length === 0 ? (
+                  <div className="empty-documents">
+                    <p>Ссылки на документы не добавлены</p>
+                    <p className="hint">Добавьте ссылки на Google Drive с чертежами и спецификациями</p>
+                  </div>
+                ) : (
+                  <div className="documents-list">
+                    {tenderDocuments
+                      .filter(d => d.document_type === 'attachment')
+                      .map(doc => (
+                        <div key={doc.id} className="document-item">
+                          <span className="doc-icon">{getDocumentIcon(doc.url)}</span>
+                          <div className="doc-info">
+                            <span className="doc-name">{doc.name}</span>
+                            <span className="doc-size doc-url">{doc.url}</span>
+                          </div>
+                          <div className="doc-actions">
+                            <a
+                              href={doc.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn-icon-action"
+                              title="Открыть"
+                            >
+                              🔗
+                            </a>
+                            <button
+                              className="btn-icon-action btn-delete-doc"
+                              onClick={() => handleDeleteDocument(doc)}
+                              title="Удалить"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Вкладка Смета */}
         {activeTab === 'estimate' && (
           <div className="estimate-section">
             <div className="section-header">
-              <h3>Позиции сметы</h3>
+              <h3>Сметы тендера ({getEstimateNames().length} смет, {estimateItems.length} позиций)</h3>
               <div className="section-actions">
-                <button className="btn-secondary" onClick={() => setShowImportEstimateModal(true)}>
-                  Импорт из Excel
-                </button>
-                <button className="btn-primary" onClick={handleAddEstimateItem}>
+                {selectedEstimateItems.size > 0 && (
+                  <button className="btn-danger" onClick={handleDeleteSelectedItems}>
+                    🗑️ Удалить выбранные ({selectedEstimateItems.size})
+                  </button>
+                )}
+                <button className="btn-secondary" onClick={handleAddEstimateItem}>
                   + Добавить позицию
+                </button>
+                <button className="btn-primary" onClick={() => setShowImportEstimateModal(true)}>
+                  📥 Импорт сметы
                 </button>
               </div>
             </div>
 
             {estimateItems.length === 0 ? (
               <div className="empty-state">
-                <p>Позиции сметы еще не добавлены</p>
-                <p className="hint">Добавьте позиции вручную или импортируйте из Excel файла</p>
+                <p>Сметы еще не добавлены</p>
+                <p className="hint">Импортируйте сметы из Excel файлов. Можно загрузить несколько смет.</p>
               </div>
             ) : (
-              <div className="estimate-table-container">
-                <table className="estimate-table full-estimate">
-                  <thead>
-                    {/* Первый уровень заголовков */}
-                    <tr className="header-row-1">
-                      <th rowSpan="2" className="sticky-col col-num">№ п/п</th>
-                      <th rowSpan="2" className="sticky-col col-code">КОД</th>
-                      <th rowSpan="2" className="sticky-col col-type">Вид затрат</th>
-                      <th rowSpan="2" className="sticky-col col-name">Наименование затрат</th>
-                      <th rowSpan="2">Примечание к расчету</th>
-                      <th rowSpan="2">Ед. изм.</th>
-                      <th rowSpan="2">Объем по виду работ</th>
-                      <th rowSpan="2">Общий расход по материалу</th>
-                      {/* Колонки для каждого контрагента */}
-                      {tenderCounterparties.map(tc => (
-                        <th key={tc.id} colSpan="8" className="counterparty-header-cell">
-                          <div className="cp-header-name">{tc.counterparties?.name}</div>
+              <div className="estimates-list">
+                {getEstimateNames().map(estimateName => {
+                  const items = getItemsByEstimate(estimateName)
+                  const isExpanded = expandedEstimates.has(estimateName)
+
+                  return (
+                    <div key={estimateName} className="estimate-card">
+                      <div
+                        className="estimate-card-header"
+                        onClick={() => toggleEstimateExpanded(estimateName)}
+                      >
+                        <div className="estimate-header-left">
+                          <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                          <h4>{estimateName}</h4>
+                          <span className="estimate-count">({items.length} позиций)</span>
+                        </div>
+                        <div className="estimate-header-actions" onClick={e => e.stopPropagation()}>
                           <button
-                            className="btn-upload-small"
-                            onClick={() => handleUploadClick(tc.counterparty_id)}
-                            title="Загрузить КП"
-                          >
-                            📤 Загрузить КП
-                          </button>
-                        </th>
-                      ))}
-                      <th rowSpan="2" className="col-actions">Действия</th>
-                    </tr>
-                    {/* Второй уровень заголовков - подзаголовки для контрагентов */}
-                    <tr className="header-row-2">
-                      {tenderCounterparties.map(tc => (
-                        <React.Fragment key={`sub-${tc.id}`}>
-                          <th className="sub-header">Цена за ед. Матер./Обор.</th>
-                          <th className="sub-header">Цена за ед. СМР/ПНР</th>
-                          <th className="sub-header">ИТОГО цена за ед.</th>
-                          <th className="sub-header">Стоим. Матер./Обор.</th>
-                          <th className="sub-header">Стоим. СМР/ПНР</th>
-                          <th className="sub-header">ИТОГО стоимость</th>
-                          <th className="sub-header">Общая стоимость</th>
-                          <th className="sub-header">Примечание</th>
-                        </React.Fragment>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {estimateItems.map(item => (
-                      <tr key={item.id}>
-                        <td className="sticky-col col-num center">{item.row_number}</td>
-                        <td className="sticky-col col-code">{item.code || '-'}</td>
-                        <td className="sticky-col col-type">{item.cost_type || '-'}</td>
-                        <td className="sticky-col col-name">{item.cost_name}</td>
-                        <td>{item.calculation_note || '-'}</td>
-                        <td className="center">{item.unit || '-'}</td>
-                        <td className="right">{item.work_volume ?? '-'}</td>
-                        <td className="right">{item.material_consumption ?? '-'}</td>
-                        {/* Данные от каждого контрагента */}
-                        {tenderCounterparties.map(tc => {
-                          const proposal = proposals[tc.counterparty_id]?.[item.id]
-                          return (
-                            <React.Fragment key={`data-${tc.id}-${item.id}`}>
-                              <td className="right price-cell">
-                                {proposal?.unit_price_materials ? formatCurrency(proposal.unit_price_materials) : '-'}
-                              </td>
-                              <td className="right price-cell">
-                                {proposal?.unit_price_works ? formatCurrency(proposal.unit_price_works) : '-'}
-                              </td>
-                              <td className="right price-cell total-cell">
-                                {proposal?.total_unit_price ? formatCurrency(proposal.total_unit_price) : '-'}
-                              </td>
-                              <td className="right price-cell">
-                                {proposal?.total_materials ? formatCurrency(proposal.total_materials) : '-'}
-                              </td>
-                              <td className="right price-cell">
-                                {proposal?.total_works ? formatCurrency(proposal.total_works) : '-'}
-                              </td>
-                              <td className="right price-cell sum-cell">
-                                {proposal?.total_cost ? formatCurrency(proposal.total_cost) : '-'}
-                              </td>
-                              <td className="right price-cell grand-cell">
-                                {proposal?.total_cost ? formatCurrency(proposal.total_cost) : '-'}
-                              </td>
-                              <td className="note-cell">{proposal?.participant_note || '-'}</td>
-                            </React.Fragment>
-                          )
-                        })}
-                        <td className="col-actions actions">
-                          <button
-                            className="btn-icon"
-                            onClick={() => handleEditEstimateItem(item)}
-                            title="Редактировать"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            className="btn-icon"
-                            onClick={() => handleDeleteEstimateItem(item.id)}
-                            title="Удалить"
+                            className="btn-icon-small"
+                            onClick={() => handleDeleteEstimate(estimateName)}
+                            title="Удалить смету"
                           >
                             🗑️
                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {/* Итоговая строка */}
-                  {tenderCounterparties.length > 0 && (
-                    <tfoot>
-                      <tr className="totals-row">
-                        <td colSpan="8" className="sticky-col totals-label">ИТОГО:</td>
-                        {tenderCounterparties.map(tc => {
-                          const totals = calculateTotals(tc.counterparty_id)
-                          return (
-                            <React.Fragment key={`totals-${tc.id}`}>
-                              <td className="right total-value">-</td>
-                              <td className="right total-value">-</td>
-                              <td className="right total-value">-</td>
-                              <td className="right total-value">{formatCurrency(totals.totalMaterials)}</td>
-                              <td className="right total-value">{formatCurrency(totals.totalWorks)}</td>
-                              <td className="right total-value">{formatCurrency(totals.totalCost)}</td>
-                              <td className="right total-value grand-total">{formatCurrency(totals.totalCost)}</td>
-                              <td className="total-value">-</td>
-                            </React.Fragment>
-                          )
-                        })}
-                        <td className="col-actions">-</td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
+                        </div>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="estimate-card-content">
+                          <table className="estimate-table compact">
+                            <thead>
+                              <tr>
+                                <th className="col-checkbox">
+                                  <input
+                                    type="checkbox"
+                                    checked={items.length > 0 && items.every(i => selectedEstimateItems.has(i.id))}
+                                    onChange={() => {
+                                      const allSelected = items.every(i => selectedEstimateItems.has(i.id))
+                                      setSelectedEstimateItems(prev => {
+                                        const newSet = new Set(prev)
+                                        items.forEach(i => {
+                                          if (allSelected) newSet.delete(i.id)
+                                          else newSet.add(i.id)
+                                        })
+                                        return newSet
+                                      })
+                                    }}
+                                    title="Выбрать все в этой смете"
+                                  />
+                                </th>
+                                <th>№</th>
+                                <th>КОД</th>
+                                <th>Наименование</th>
+                                <th>Ед.</th>
+                                <th>Объём</th>
+                                <th>Расход</th>
+                                <th>Действия</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {items.map(item => (
+                                <tr
+                                  key={item.id}
+                                  className={selectedEstimateItems.has(item.id) ? 'selected-row' : ''}
+                                >
+                                  <td className="center">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedEstimateItems.has(item.id)}
+                                      onChange={() => handleToggleSelectItem(item.id)}
+                                    />
+                                  </td>
+                                  <td className="center">{item.row_number}</td>
+                                  <td>{item.code || '-'}</td>
+                                  <td className="col-name-compact">{item.cost_name}</td>
+                                  <td className="center">{item.unit || '-'}</td>
+                                  <td className="right">{item.work_volume ?? '-'}</td>
+                                  <td className="right">{item.material_consumption ?? '-'}</td>
+                                  <td className="actions">
+                                    <button
+                                      className="btn-icon-small"
+                                      onClick={() => handleEditEstimateItem(item)}
+                                      title="Редактировать"
+                                    >
+                                      ✏️
+                                    </button>
+                                    <button
+                                      className="btn-icon-small"
+                                      onClick={() => handleDeleteEstimateItem(item.id)}
+                                      title="Удалить"
+                                    >
+                                      🗑️
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -980,6 +1612,59 @@ function TenderDetailPage() {
         )}
       </div>
 
+      {/* Модал добавления ссылки на документ */}
+      {showAddDocumentModal && (
+        <div className="modal-overlay" onClick={() => setShowAddDocumentModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>
+                {addingDocumentType === 'estimate_template'
+                  ? 'Добавить ссылку на шаблон сметы'
+                  : 'Добавить ссылку на документ'}
+              </h3>
+              <button className="modal-close" onClick={() => setShowAddDocumentModal(false)}>×</button>
+            </div>
+            <form onSubmit={handleSaveDocument}>
+              <div className="form-grid">
+                <div className="form-group full-width">
+                  <label>Название документа *</label>
+                  <input
+                    type="text"
+                    value={documentFormData.name}
+                    onChange={e => setDocumentFormData({...documentFormData, name: e.target.value})}
+                    placeholder={addingDocumentType === 'estimate_template'
+                      ? 'Например: Шаблон сметы - Объект N'
+                      : 'Например: Чертежи фасада'}
+                    required
+                  />
+                </div>
+                <div className="form-group full-width">
+                  <label>Ссылка на Google Drive *</label>
+                  <input
+                    type="url"
+                    value={documentFormData.url}
+                    onChange={e => setDocumentFormData({...documentFormData, url: e.target.value})}
+                    placeholder="https://drive.google.com/..."
+                    required
+                  />
+                  <small className="form-hint">
+                    Скопируйте ссылку из Google Drive (Поделиться → Копировать ссылку)
+                  </small>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={() => setShowAddDocumentModal(false)}>
+                  Отмена
+                </button>
+                <button type="submit" className="btn-primary" disabled={savingDocument}>
+                  {savingDocument ? 'Сохранение...' : 'Сохранить'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Модал добавления/редактирования позиции сметы */}
       {showAddEstimateModal && (
         <div className="modal-overlay" onClick={() => setShowAddEstimateModal(false)}>
@@ -1005,15 +1690,9 @@ function TenderDetailPage() {
                     type="text"
                     value={estimateFormData.code}
                     onChange={e => setEstimateFormData({...estimateFormData, code: e.target.value})}
+                    placeholder="мат. или Р-..."
                   />
-                </div>
-                <div className="form-group">
-                  <label>Вид затрат</label>
-                  <input
-                    type="text"
-                    value={estimateFormData.cost_type}
-                    onChange={e => setEstimateFormData({...estimateFormData, cost_type: e.target.value})}
-                  />
+                  <small className="form-hint">Тип автоопределяется: «мат.» = материалы, «Р-» = работы</small>
                 </div>
                 <div className="form-group full-width">
                   <label>Наименование затрат *</label>
@@ -1021,14 +1700,6 @@ function TenderDetailPage() {
                     value={estimateFormData.cost_name}
                     onChange={e => setEstimateFormData({...estimateFormData, cost_name: e.target.value})}
                     required
-                    rows="2"
-                  />
-                </div>
-                <div className="form-group full-width">
-                  <label>Примечание к расчету</label>
-                  <textarea
-                    value={estimateFormData.calculation_note}
-                    onChange={e => setEstimateFormData({...estimateFormData, calculation_note: e.target.value})}
                     rows="2"
                   />
                 </div>
@@ -1041,7 +1712,7 @@ function TenderDetailPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Объем по виду работ</label>
+                  <label>Объем работ (E)</label>
                   <input
                     type="number"
                     step="0.0001"
@@ -1050,12 +1721,20 @@ function TenderDetailPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Общий расход по материалу</label>
+                  <label>Расход материала (F)</label>
                   <input
                     type="number"
                     step="0.0001"
                     value={estimateFormData.material_consumption}
                     onChange={e => setEstimateFormData({...estimateFormData, material_consumption: e.target.value})}
+                  />
+                </div>
+                <div className="form-group full-width">
+                  <label>Примечания (L)</label>
+                  <textarea
+                    value={estimateFormData.calculation_note}
+                    onChange={e => setEstimateFormData({...estimateFormData, calculation_note: e.target.value})}
+                    rows="2"
                   />
                 </div>
               </div>
@@ -1081,19 +1760,56 @@ function TenderDetailPage() {
               <button className="modal-close" onClick={() => setShowUploadModal(false)}>×</button>
             </div>
             <div className="modal-content">
-              <p className="upload-hint">
-                Выберите Excel файл (.xlsx) с заполненными ценами.
-                Файл должен содержать позиции в том же порядке, что и смета.
-              </p>
-              <div className="upload-area">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleFileSelect}
-                  disabled={uploading}
-                />
-                {uploading && <div className="uploading-indicator">Загрузка...</div>}
+              <div className="upload-options">
+                {/* Вариант 1: Упрощённый шаблон (рекомендуется) */}
+                <div className="upload-option recommended">
+                  <div className="upload-option-header">
+                    <span className="option-badge">Рекомендуется</span>
+                    <h4>📋 Загрузить упрощённый шаблон расценок</h4>
+                  </div>
+                  <p className="upload-option-desc">
+                    Подрядчик заполняет цены только для уникальных позиций.
+                    Система автоматически распределит их на все связанные позиции сметы.
+                  </p>
+                  <div className="upload-option-actions">
+                    <label className="btn-primary upload-btn">
+                      📤 Загрузить заполненный шаблон
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={handleImportPricesFromTemplate}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                    <button
+                      className="btn-secondary"
+                      onClick={handleDownloadPriceTemplate}
+                      disabled={estimateItems.length === 0}
+                    >
+                      📥 Скачать пустой шаблон
+                    </button>
+                  </div>
+                </div>
+
+                {/* Вариант 2: Полный формат */}
+                <div className="upload-option">
+                  <h4>📊 Загрузить в полном формате</h4>
+                  <p className="upload-option-desc">
+                    Excel с ценами для каждой строки сметы (старый формат).
+                  </p>
+                  <label className="btn-secondary upload-btn">
+                    Выбрать файл
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={handleFileSelect}
+                      disabled={uploading}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                  {uploading && <div className="uploading-indicator">Загрузка...</div>}
+                </div>
               </div>
             </div>
             <div className="modal-footer">

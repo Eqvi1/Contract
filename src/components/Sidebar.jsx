@@ -9,42 +9,15 @@ function Sidebar() {
   const navigate = useNavigate()
   const { logout } = useRole()
 
-  const [generalInfoExpanded, setGeneralInfoExpanded] = useState(
-    location.pathname.startsWith('/general')
-  )
   const [tendersExpanded, setTendersExpanded] = useState(
     location.pathname.startsWith('/tenders')
   )
-  const [contractsExpanded, setContractsExpanded] = useState(
-    location.pathname.startsWith('/contracts')
-  )
-  const [contractsConstructionExpanded, setContractsConstructionExpanded] = useState(
-    location.pathname.startsWith('/contracts/construction')
-  )
-  const [contractsWarrantyExpanded, setContractsWarrantyExpanded] = useState(
-    location.pathname.startsWith('/contracts/warranty')
-  )
-  const [bsmExpanded, setBsmExpanded] = useState(
-    location.pathname.startsWith('/bsm')
-  )
 
   const menuItems = [
+    { path: '/contracts', label: 'Договоры', icon: '📋' },
+    { path: '/bsm', label: 'Материалы', icon: '📦' },
     { path: '/acceptance', label: 'Приёмка работ', icon: '✓' },
     { path: '/reports', label: 'Отчёты', icon: '📊' },
-  ]
-
-  const bsmSubItems = [
-    { path: '/bsm/analysis', label: 'Анализ материалов', icon: '📊' },
-    { path: '/bsm/comparison', label: 'Сравнение расценок', icon: '⚖️' },
-    { path: '/bsm/contract-rates', label: 'Согласованные расценки', icon: '📝' },
-    { path: '/bsm/supply-rates', label: 'Расценки от снабжения', icon: '📦' },
-    { path: '/bsm/contractor-rates', label: 'БСМ с подрядчиком', icon: '🤝' },
-  ]
-
-  const generalInfoSubItems = [
-    { path: '/general/objects', label: 'Объекты', icon: '🏢' },
-    { path: '/general/contacts', label: 'Контакты', icon: '👤' },
-    { path: '/general/counterparties', label: 'Контрагенты', icon: '🏛️' },
   ]
 
   const tendersSubItems = [
@@ -52,22 +25,7 @@ function Sidebar() {
     { path: '/tenders/warranty', label: 'Гарантийный отдел', icon: '🛡️' },
   ]
 
-  const contractsConstructionSubItems = [
-    { path: '/contracts/construction/pending', label: 'На согласовании', icon: '⏳' },
-    { path: '/contracts/construction/signed', label: 'Заключенные ДП', icon: '✅' },
-  ]
-
-  const contractsWarrantySubItems = [
-    { path: '/contracts/warranty/pending', label: 'На согласовании', icon: '⏳' },
-    { path: '/contracts/warranty/signed', label: 'Заключенные ДП', icon: '✅' },
-  ]
-
-  const isGeneralInfoActive = location.pathname.startsWith('/general')
   const isTendersActive = location.pathname.startsWith('/tenders')
-  const isContractsActive = location.pathname.startsWith('/contracts')
-  const isContractsConstructionActive = location.pathname.startsWith('/contracts/construction')
-  const isContractsWarrantyActive = location.pathname.startsWith('/contracts/warranty')
-  const isBsmActive = location.pathname.startsWith('/bsm')
 
   return (
     <aside className="sidebar">
@@ -77,36 +35,16 @@ function Sidebar() {
       </div>
 
       <nav className="sidebar-nav">
-        {/* Collapsible General Info Section */}
-        <div className="sidebar-item-wrapper">
-          <button
-            className={`sidebar-item sidebar-item-parent ${isGeneralInfoActive ? 'active' : ''}`}
-            onClick={() => setGeneralInfoExpanded(!generalInfoExpanded)}
-          >
-            <span className="sidebar-icon">📁</span>
-            <span className="sidebar-label">Общая информация</span>
-            <span className={`sidebar-chevron ${generalInfoExpanded ? 'expanded' : ''}`}>
-              ›
-            </span>
-          </button>
-
-          {generalInfoExpanded && (
-            <div className="sidebar-submenu">
-              {generalInfoSubItems.map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={({ isActive }) =>
-                    `sidebar-subitem ${isActive ? 'active' : ''}`
-                  }
-                >
-                  <span className="sidebar-icon">{item.icon}</span>
-                  <span className="sidebar-label">{item.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Regular menu items - first group */}
+        <NavLink
+          to="/general"
+          className={({ isActive }) =>
+            `sidebar-item ${isActive ? 'active' : ''}`
+          }
+        >
+          <span className="sidebar-icon">📁</span>
+          <span className="sidebar-label">Общая информация</span>
+        </NavLink>
 
         {/* Collapsible Tenders Section */}
         <div className="sidebar-item-wrapper">
@@ -139,116 +77,16 @@ function Sidebar() {
           )}
         </div>
 
-        {/* Collapsible Contracts Section */}
-        <div className="sidebar-item-wrapper">
-          <button
-            className={`sidebar-item sidebar-item-parent ${isContractsActive ? 'active' : ''}`}
-            onClick={() => setContractsExpanded(!contractsExpanded)}
-          >
-            <span className="sidebar-icon">📋</span>
-            <span className="sidebar-label">Договоры</span>
-            <span className={`sidebar-chevron ${contractsExpanded ? 'expanded' : ''}`}>
-              ›
-            </span>
-          </button>
-
-          {contractsExpanded && (
-            <div className="sidebar-submenu">
-              {/* Основное строительство */}
-              <div className="sidebar-nested-wrapper">
-                <button
-                  className={`sidebar-subitem sidebar-subitem-parent ${isContractsConstructionActive ? 'active' : ''}`}
-                  onClick={() => setContractsConstructionExpanded(!contractsConstructionExpanded)}
-                >
-                  <span className="sidebar-icon">🏗️</span>
-                  <span className="sidebar-label">Основное строительство</span>
-                  <span className={`sidebar-chevron ${contractsConstructionExpanded ? 'expanded' : ''}`}>
-                    ›
-                  </span>
-                </button>
-
-                {contractsConstructionExpanded && (
-                  <div className="sidebar-nested-submenu">
-                    {contractsConstructionSubItems.map((item) => (
-                      <NavLink
-                        key={item.path}
-                        to={item.path}
-                        className={({ isActive }) =>
-                          `sidebar-nested-item ${isActive ? 'active' : ''}`
-                        }
-                      >
-                        <span className="sidebar-icon">{item.icon}</span>
-                        <span className="sidebar-label">{item.label}</span>
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Гарантийный отдел */}
-              <div className="sidebar-nested-wrapper">
-                <button
-                  className={`sidebar-subitem sidebar-subitem-parent ${isContractsWarrantyActive ? 'active' : ''}`}
-                  onClick={() => setContractsWarrantyExpanded(!contractsWarrantyExpanded)}
-                >
-                  <span className="sidebar-icon">🛡️</span>
-                  <span className="sidebar-label">Гарантийный отдел</span>
-                  <span className={`sidebar-chevron ${contractsWarrantyExpanded ? 'expanded' : ''}`}>
-                    ›
-                  </span>
-                </button>
-
-                {contractsWarrantyExpanded && (
-                  <div className="sidebar-nested-submenu">
-                    {contractsWarrantySubItems.map((item) => (
-                      <NavLink
-                        key={item.path}
-                        to={item.path}
-                        className={({ isActive }) =>
-                          `sidebar-nested-item ${isActive ? 'active' : ''}`
-                        }
-                      >
-                        <span className="sidebar-icon">{item.icon}</span>
-                        <span className="sidebar-label">{item.label}</span>
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Collapsible BSM Section */}
-        <div className="sidebar-item-wrapper">
-          <button
-            className={`sidebar-item sidebar-item-parent ${isBsmActive ? 'active' : ''}`}
-            onClick={() => setBsmExpanded(!bsmExpanded)}
-          >
-            <span className="sidebar-icon">📦</span>
-            <span className="sidebar-label">БСМ и материалы</span>
-            <span className={`sidebar-chevron ${bsmExpanded ? 'expanded' : ''}`}>
-              ›
-            </span>
-          </button>
-
-          {bsmExpanded && (
-            <div className="sidebar-submenu">
-              {bsmSubItems.map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={({ isActive }) =>
-                    `sidebar-subitem ${isActive ? 'active' : ''}`
-                  }
-                >
-                  <span className="sidebar-icon">{item.icon}</span>
-                  <span className="sidebar-label">{item.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Анализ КП */}
+        <NavLink
+          to="/analysis-kp"
+          className={({ isActive }) =>
+            `sidebar-item ${isActive ? 'active' : ''}`
+          }
+        >
+          <span className="sidebar-icon">📊</span>
+          <span className="sidebar-label">Анализ КП</span>
+        </NavLink>
 
         {/* Regular menu items */}
         {menuItems.map((item) => (

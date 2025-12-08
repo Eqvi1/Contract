@@ -24,7 +24,13 @@
       "Bash(cat:*)",
       "Bash(supabase:*)",
       "Bash(taskkill:*)",
-      "Bash(npx supabase db push:*)"
+      "Bash(npx supabase db push:*)",
+      "mcp__github__get_file_contents",
+      "Bash(npm run lint:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []
